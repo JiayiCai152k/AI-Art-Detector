@@ -12,5 +12,6 @@ __all__ = [
     'plot_size_distribution',
     'plot_brightness_analysis',
     'plot_sample_color_distributions',
-    'generate_summary_report'
+    'generate_summary_report',
+    'load_or_process_dataset'
 ]

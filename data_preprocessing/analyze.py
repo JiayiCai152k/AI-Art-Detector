@@ -13,30 +13,65 @@ from scipy import stats
 
 
 def extract_color_features(img_array: np.ndarray) -> Dict[str, float]:
-    """Extract color-based features from an image array"""
+    """Extract comprehensive color-based features from an image array"""
     # Convert to RGB if needed
-    if len(img_array.shape) == 2:  # Grayscale
+    if len(img_array.shape) == 2:
         img_array = np.stack([img_array] * 3, axis=-1)
     
-    # Color channel means and std
-    channel_means = np.mean(img_array, axis=(0, 1))
-    channel_stds = np.std(img_array, axis=(0, 1))
+    # Convert to different color spaces
+    hsv_img = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
+    lab_img = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
     
-    # Color ratios
-    rgb_sum = np.sum(channel_means)
-    if rgb_sum == 0:
-        rgb_sum = 1  # Prevent division by zero
+    # RGB features
+    rgb_means = np.mean(img_array, axis=(0, 1))
+    rgb_stds = np.std(img_array, axis=(0, 1))
+    
+    # HSV features
+    hsv_means = np.mean(hsv_img, axis=(0, 1))
+    hsv_stds = np.std(hsv_img, axis=(0, 1))
+    
+    # Calculate saturation metrics
+    saturation = hsv_img[:, :, 1]
+    
+    # Calculate hue distribution
+    hue_hist = np.histogram(hsv_img[:, :, 0], bins=8, range=(0, 180))[0]
+    hue_dist = hue_hist / np.sum(hue_hist)
+    
+    # Brightness and contrast from LAB space
+    brightness = np.mean(lab_img[:, :, 0])
+    contrast = np.std(lab_img[:, :, 0])
     
     features = {
-        'red_mean': channel_means[0],
-        'green_mean': channel_means[1],
-        'blue_mean': channel_means[2],
-        'red_std': channel_stds[0],
-        'green_std': channel_stds[1],
-        'blue_std': channel_stds[2],
-        'red_ratio': channel_means[0] / rgb_sum,
-        'green_ratio': channel_means[1] / rgb_sum,
-        'blue_ratio': channel_means[2] / rgb_sum,
+        # RGB features
+        'red_mean': rgb_means[0],
+        'green_mean': rgb_means[1],
+        'blue_mean': rgb_means[2],
+        'red_std': rgb_stds[0],
+        'green_std': rgb_stds[1],
+        'blue_std': rgb_stds[2],
+        'red_ratio': rgb_means[0] / np.sum(rgb_means),
+        'green_ratio': rgb_means[1] / np.sum(rgb_means),
+        'blue_ratio': rgb_means[2] / np.sum(rgb_means),
+        
+        # HSV features
+        'hue_mean': hsv_means[0],
+        'saturation_mean': hsv_means[1],
+        'value_mean': hsv_means[2],
+        'hue_std': hsv_stds[0],
+        'saturation_std': hsv_stds[1],
+        'value_std': hsv_stds[2],
+        
+        # Saturation metrics
+        'saturation_median': np.median(saturation),
+        'saturation_quartile_1': np.percentile(saturation, 25),
+        'saturation_quartile_3': np.percentile(saturation, 75),
+        
+        # Hue distribution features
+        **{f'hue_bin_{i}': val for i, val in enumerate(hue_dist)},
+        
+        # LAB color space features
+        'lab_brightness': brightness,
+        'lab_contrast': contrast,
     }
     
     return features
@@ -105,22 +140,35 @@ def analyze_dataset(data_dir="../data") -> pd.DataFrame:
                 features = {
                     "path": str(img_path),
                     "label": label,
-                    "width": img.size[0],
-                    "height": img.size[1],
+                    #"width": img.size[0],
+                    #"height": img.size[1],
                     "aspect_ratio": img.size[0] / img.size[1],
-                    "size_kb": os.path.getsize(img_path) / 1024,
+                    #"size_kb": os.path.getsize(img_path) / 1024,
                     "channels": img_array.shape[2] if len(img_array.shape) > 2 else 1,
-                    "mean_brightness": np.mean(img_array),
-                    "std_brightness": np.std(img_array),
+                    "mean_brightness": float(np.mean(img_array)),
+                    "std_brightness": float(np.std(img_array))
                 }
                 
+                # Convert to uint8 for feature extraction if needed
+                img_array_uint8 = img_array
+                if img_array.dtype != np.uint8:
+                    img_array_uint8 = (img_array * 255).astype(np.uint8) if img_array.max() <= 1.0 else img_array.astype(np.uint8)
+                
                 # Add color features
-                color_features = extract_color_features(img_array)
+                color_features = extract_color_features(img_array_uint8)
                 features.update(color_features)
                 
                 # Add texture features
-                texture_features = extract_texture_features(img_array)
+                texture_features = extract_texture_features(img_array_uint8)
                 features.update(texture_features)
+                
+                # Add line features
+                line_features = extract_line_features(img_array_uint8)
+                features.update(line_features)
+                
+                # Add contrast features
+                contrast_features = extract_contrast_features(img_array_uint8)
+                features.update(contrast_features)
                 
                 print(f"✓ Processed {label} image: {os.path.basename(img_path)}")
                 return features
@@ -278,30 +326,41 @@ def generate_summary_report(df: pd.DataFrame) -> str:
     AI-generated: {len(df[df['label'] == 'AI'])}
     Human-created: {len(df[df['label'] == 'Human'])}
 
-    Image Dimensions:
+    Color Characteristics:
+    -------------------
+    RGB Means:
+        AI     - R: {df[df['label'] == 'AI']['red_mean'].mean():.1f}, G: {df[df['label'] == 'AI']['green_mean'].mean():.1f}, B: {df[df['label'] == 'AI']['blue_mean'].mean():.1f}
+        Human  - R: {df[df['label'] == 'Human']['red_mean'].mean():.1f}, G: {df[df['label'] == 'Human']['green_mean'].mean():.1f}, B: {df[df['label'] == 'Human']['blue_mean'].mean():.1f}
+    
+    Color Ratios:
+        AI     - R: {df[df['label'] == 'AI']['red_ratio'].mean():.3f}, G: {df[df['label'] == 'AI']['green_ratio'].mean():.3f}, B: {df[df['label'] == 'AI']['blue_ratio'].mean():.3f}
+        Human  - R: {df[df['label'] == 'Human']['red_ratio'].mean():.3f}, G: {df[df['label'] == 'Human']['green_ratio'].mean():.3f}, B: {df[df['label'] == 'Human']['blue_ratio'].mean():.3f}
+
+    Texture and Line Features:
+    -----------------------
+    Edge Density:
+        AI     - Mean: {df[df['label'] == 'AI']['edge_density'].mean():.3f}, Std: {df[df['label'] == 'AI']['edge_density'].std():.3f}
+        Human  - Mean: {df[df['label'] == 'Human']['edge_density'].mean():.3f}, Std: {df[df['label'] == 'Human']['edge_density'].std():.3f}
+    
+    Line Statistics:
+        AI     - Count: {df[df['label'] == 'AI']['line_count'].mean():.1f}, Density: {df[df['label'] == 'AI']['line_density'].mean():.4f}
+        Human  - Count: {df[df['label'] == 'Human']['line_count'].mean():.1f}, Density: {df[df['label'] == 'Human']['line_density'].mean():.4f}
+
+    Contrast Analysis:
     ---------------
-    Width (pixels):
-        AI     - Mean: {df[df['label'] == 'AI']['width'].mean():.1f}, Std: {df[df['label'] == 'AI']['width'].std():.1f}
-        Human  - Mean: {df[df['label'] == 'Human']['width'].mean():.1f}, Std: {df[df['label'] == 'Human']['width'].std():.1f}
+    Michelson Contrast:
+        AI     - Mean: {df[df['label'] == 'AI']['michelson_contrast'].mean():.3f}, Std: {df[df['label'] == 'AI']['michelson_contrast'].std():.3f}
+        Human  - Mean: {df[df['label'] == 'Human']['michelson_contrast'].mean():.3f}, Std: {df[df['label'] == 'Human']['michelson_contrast'].std():.3f}
     
-    Height (pixels):
-        AI     - Mean: {df[df['label'] == 'AI']['height'].mean():.1f}, Std: {df[df['label'] == 'AI']['height'].std():.1f}
-        Human  - Mean: {df[df['label'] == 'Human']['height'].mean():.1f}, Std: {df[df['label'] == 'Human']['height'].std():.1f}
-    
-    Aspect Ratio:
-        AI     - Mean: {df[df['label'] == 'AI']['aspect_ratio'].mean():.2f}, Std: {df[df['label'] == 'AI']['aspect_ratio'].std():.2f}
-        Human  - Mean: {df[df['label'] == 'Human']['aspect_ratio'].mean():.2f}, Std: {df[df['label'] == 'Human']['aspect_ratio'].std():.2f}
+    RMS Contrast:
+        AI     - Mean: {df[df['label'] == 'AI']['rms_contrast'].mean():.3f}, Std: {df[df['label'] == 'AI']['rms_contrast'].std():.3f}
+        Human  - Mean: {df[df['label'] == 'Human']['rms_contrast'].mean():.3f}, Std: {df[df['label'] == 'Human']['rms_contrast'].std():.3f}
 
-    File Sizes:
-    ----------
-    AI     - Mean: {df[df['label'] == 'AI']['size_kb'].mean():.1f}KB, Std: {df[df['label'] == 'AI']['size_kb'].std():.1f}KB
-    Human  - Mean: {df[df['label'] == 'Human']['size_kb'].mean():.1f}KB, Std: {df[df['label'] == 'Human']['size_kb'].std():.1f}KB
-
-    Brightness Characteristics:
-    ------------------------
-    Mean Brightness:
-        AI     - Mean: {df[df['label'] == 'AI']['mean_brightness'].mean():.1f}, Std: {df[df['label'] == 'AI']['mean_brightness'].std():.1f}
-        Human  - Mean: {df[df['label'] == 'Human']['mean_brightness'].mean():.1f}, Std: {df[df['label'] == 'Human']['mean_brightness'].std():.1f}
+    Entropy and Complexity:
+    --------------------
+    Image Entropy:
+        AI     - Mean: {df[df['label'] == 'AI']['entropy'].mean():.3f}, Std: {df[df['label'] == 'AI']['entropy'].std():.3f}
+        Human  - Mean: {df[df['label'] == 'Human']['entropy'].mean():.3f}, Std: {df[df['label'] == 'Human']['entropy'].std():.3f}
     """
     return summary
 
@@ -437,7 +496,9 @@ def get_top_correlations(df: pd.DataFrame, n: int = 5) -> List[Tuple[Tuple[str, 
     
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     series = upper.unstack()
-    series = series.sort_values(ascending=False)
+    values = np.array(series.values, dtype=float)
+    idx = np.argsort(values)[::-1]
+    series = pd.Series(values[idx], index=series.index[idx])
     series = series.dropna()
     
     return list(zip(zip(*[series.index.get_level_values(i) for i in [0, 1]]), 
@@ -517,6 +578,89 @@ def analyze_features(df: pd.DataFrame) -> None:
     print("\nKey findings summary:")
     print(report)
 
+
+def extract_line_features(img_array: np.ndarray) -> Dict[str, float]:
+    """Extract line-based features from an image"""
+    # Convert to grayscale if needed
+    if len(img_array.shape) > 2:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+    
+    # Line segment detection using LSD
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, 
+                           minLineLength=30, maxLineGap=10)
+    
+    # Get image dimensions safely
+    height, width = gray.shape[:2]
+    image_area = float(height * width)
+    
+    if lines is not None:
+        # Calculate line statistics
+        line_lengths = []
+        line_angles = []
+        
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            angle = np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi
+            line_lengths.append(length)
+            line_angles.append(angle)
+        
+        features = {
+            'line_count': float(len(lines)),
+            'avg_line_length': float(np.mean(line_lengths)),
+            'std_line_length': float(np.std(line_lengths)),
+            'median_line_length': float(np.median(line_lengths)),
+            'line_density': float(len(lines)) / image_area,
+            'horizontal_lines': float(np.sum(np.abs(np.array(line_angles)) < 10)),
+            'vertical_lines': float(np.sum(np.abs(np.array(line_angles) - 90) < 10)),
+        }
+    else:
+        features = {
+            'line_count': 0.0,
+            'avg_line_length': 0.0,
+            'std_line_length': 0.0,
+            'median_line_length': 0.0,
+            'line_density': 0.0,
+            'horizontal_lines': 0.0,
+            'vertical_lines': 0.0,
+        }
+    
+    return features
+
+
+def extract_contrast_features(img_array: np.ndarray) -> Dict[str, float]:
+    """Extract detailed contrast features from an image"""
+    if len(img_array.shape) > 2:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+    
+    # Local contrast using different window sizes
+    local_contrast_3x3 = cv2.Sobel(gray, cv2.CV_64F, 1, 1, ksize=3)
+    local_contrast_5x5 = cv2.Sobel(gray, cv2.CV_64F, 1, 1, ksize=5)
+    
+    # Michelson contrast
+    min_val = np.min(gray)
+    max_val = np.max(gray)
+    michelson_contrast = (max_val - min_val) / (max_val + min_val + 1e-6)
+    
+    # RMS contrast
+    rms_contrast = np.std(gray) / np.mean(gray)
+    
+    features = {
+        'michelson_contrast': michelson_contrast,
+        'rms_contrast': rms_contrast,
+        'local_contrast_3x3_mean': np.mean(np.abs(local_contrast_3x3)),
+        'local_contrast_5x5_mean': np.mean(np.abs(local_contrast_5x5)),
+        'local_contrast_3x3_std': np.std(local_contrast_3x3),
+        'local_contrast_5x5_std': np.std(local_contrast_5x5),
+    }
+    
+    return features
+
 # Add this at the bottom of the file
 __all__ = [
     'analyze_dataset',
@@ -530,5 +674,16 @@ __all__ = [
     'perform_pca_analysis',
     'plot_feature_distributions',
     'generate_analysis_report',
-    'analyze_features'
+    'analyze_features',
+    'extract_line_features',
+    'extract_contrast_features',
+    'extract_color_features',
+    'extract_texture_features',
+    'extract_line_features',
+    'extract_contrast_features',
+    'load_or_process_dataset',
+    'plot_size_distribution',
+    'plot_brightness_analysis',
+    'plot_sample_color_distributions',
+    'generate_summary_report'
 ]
