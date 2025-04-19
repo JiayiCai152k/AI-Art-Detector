@@ -6,12 +6,66 @@ from pathlib import Path
 import cv2
 from PIL import Image
 import os
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Any
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from scipy import stats
+
+
+def extract_color_features(img_array: np.ndarray) -> Dict[str, float]:
+    """Extract color-based features from an image array"""
+    # Convert to RGB if needed
+    if len(img_array.shape) == 2:  # Grayscale
+        img_array = np.stack([img_array] * 3, axis=-1)
+    
+    # Color channel means and std
+    channel_means = np.mean(img_array, axis=(0, 1))
+    channel_stds = np.std(img_array, axis=(0, 1))
+    
+    # Color ratios
+    rgb_sum = np.sum(channel_means)
+    if rgb_sum == 0:
+        rgb_sum = 1  # Prevent division by zero
+    
+    features = {
+        'red_mean': channel_means[0],
+        'green_mean': channel_means[1],
+        'blue_mean': channel_means[2],
+        'red_std': channel_stds[0],
+        'green_std': channel_stds[1],
+        'blue_std': channel_stds[2],
+        'red_ratio': channel_means[0] / rgb_sum,
+        'green_ratio': channel_means[1] / rgb_sum,
+        'blue_ratio': channel_means[2] / rgb_sum,
+    }
+    
+    return features
+
+
+def extract_texture_features(img_array: np.ndarray) -> Dict[str, float]:
+    """Extract texture-based features from an image array"""
+    # Convert to grayscale if needed
+    if len(img_array.shape) > 2:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+    
+    # Calculate texture features
+    features = {
+        'entropy': -np.sum(np.multiply(gray/255, np.log2(gray/255 + 1e-10))),
+        'contrast': np.std(gray),
+    }
+    
+    # Edge features
+    edges = cv2.Canny(gray, 100, 200)
+    features['edge_density'] = np.mean(edges > 0)
+    
+    return features
 
 
 def analyze_dataset(data_dir="../data") -> pd.DataFrame:
     """
-    Analyze the ukiyo-e dataset and return basic statistics
+    Analyze the ukiyo-e dataset and return basic statistics with engineered features
     """
     ai_path = os.path.join(data_dir, "AI_SD_ukiyo-e")
     human_path = os.path.join(data_dir, "Human_Ukiyo_e")
@@ -41,45 +95,79 @@ def analyze_dataset(data_dir="../data") -> pd.DataFrame:
         print("No images found in either directory!")
         return pd.DataFrame()
 
-    # Process AI-generated images
-    for img_path in Path(ai_path).glob("*.[jp][pn][g]"):
+    def process_single_image(img_path: Path, label: str) -> Dict[str, Any]:
+        """Process a single image and extract all features"""
         try:
             with Image.open(img_path) as img:
                 img_array = np.array(img)
-                data.append({
+                
+                # Basic features
+                features = {
                     "path": str(img_path),
-                    "label": "AI",
+                    "label": label,
                     "width": img.size[0],
                     "height": img.size[1],
                     "aspect_ratio": img.size[0] / img.size[1],
                     "size_kb": os.path.getsize(img_path) / 1024,
                     "channels": img_array.shape[2] if len(img_array.shape) > 2 else 1,
                     "mean_brightness": np.mean(img_array),
-                    "std_brightness": np.std(img_array)
-                })
+                    "std_brightness": np.std(img_array),
+                }
+                
+                # Add color features
+                color_features = extract_color_features(img_array)
+                features.update(color_features)
+                
+                # Add texture features
+                texture_features = extract_texture_features(img_array)
+                features.update(texture_features)
+                
+                print(f"✓ Processed {label} image: {os.path.basename(img_path)}")
+                return features
+                
         except Exception as e:
-            print(f"Error processing {img_path}: {e}")
+            print(f"✗ Error processing {img_path}: {e}")
+            return {}
+
+    # Process AI-generated images
+    for img_path in Path(ai_path).glob("*.[jp][pn][g]"):
+        features = process_single_image(img_path, "AI")
+        if features:
+            data.append(features)
 
     # Process human-created images
     for img_path in Path(human_path).glob("*.[jp][pn][g]"):
-        try:
-            with Image.open(img_path) as img:
-                img_array = np.array(img)
-                data.append({
-                    "path": str(img_path),
-                    "label": "Human",
-                    "width": img.size[0],
-                    "height": img.size[1],
-                    "aspect_ratio": img.size[0] / img.size[1],
-                    "size_kb": os.path.getsize(img_path) / 1024,
-                    "channels": img_array.shape[2] if len(img_array.shape) > 2 else 1,
-                    "mean_brightness": np.mean(img_array),
-                    "std_brightness": np.std(img_array)
-                })
-        except Exception as e:
-            print(f"Error processing {img_path}: {e}")
+        features = process_single_image(img_path, "Human")
+        if features:
+            data.append(features)
     
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    
+    # Add feature descriptions
+    feature_descriptions = {
+        'width': 'Image width in pixels',
+        'height': 'Image height in pixels',
+        'aspect_ratio': 'Width/Height ratio',
+        'size_kb': 'File size in kilobytes',
+        'channels': 'Number of color channels',
+        'mean_brightness': 'Average pixel intensity',
+        'std_brightness': 'Standard deviation of pixel intensity',
+        'red_mean': 'Mean value of red channel',
+        'green_mean': 'Mean value of green channel',
+        'blue_mean': 'Mean value of blue channel',
+        'red_std': 'Standard deviation of red channel',
+        'green_std': 'Standard deviation of green channel',
+        'blue_std': 'Standard deviation of blue channel',
+        'red_ratio': 'Proportion of red in total RGB',
+        'green_ratio': 'Proportion of green in total RGB',
+        'blue_ratio': 'Proportion of blue in total RGB',
+        'entropy': 'Image entropy (measure of randomness)',
+        'contrast': 'Standard deviation of grayscale values',
+        'edge_density': 'Proportion of edge pixels'
+    }
+    
+    df.attrs['feature_descriptions'] = feature_descriptions
+    return df
 
 
 def plot_size_distribution(df: pd.DataFrame) -> None:
@@ -217,11 +305,230 @@ def generate_summary_report(df: pd.DataFrame) -> str:
     """
     return summary
 
+
+def load_or_process_dataset(force_reprocess=False, data_dir="../data") -> pd.DataFrame:
+    """Load dataset from cache or process it if needed"""
+    cache_path = 'outputs/processed_features.csv'
+    os.makedirs('outputs', exist_ok=True)
+    
+    if not force_reprocess and os.path.exists(cache_path):
+        print("Loading cached dataset...")
+        df = pd.read_csv(cache_path)
+        print(f"Loaded {len(df)} samples from cache")
+        return df
+    
+    print("Processing dataset from images...")
+    df = analyze_dataset(data_dir)
+    
+    # Save to cache
+    print("Saving processed dataset to cache...")
+    df.to_csv(cache_path, index=False)
+    print(f"Saved {len(df)} samples to {cache_path}")
+    
+    return df
+
+
+def analyze_feature_differences(df: pd.DataFrame) -> pd.DataFrame:
+    """Analyze statistical differences between AI and human images for each feature"""
+    feature_stats = []
+    
+    numeric_features = df.select_dtypes(include=['float64', 'int64']).columns
+    features_to_analyze = [f for f in numeric_features if f not in ['path', 'label']]
+    
+    for feature in features_to_analyze:
+        ai_values = df[df['label'] == 'AI'][feature]
+        human_values = df[df['label'] == 'Human'][feature]
+        
+        # Perform t-test
+        t_stat, p_value = stats.ttest_ind(ai_values, human_values)
+        
+        # Calculate effect size (Cohen's d)
+        cohens_d = (ai_values.mean() - human_values.mean()) / np.sqrt(
+            ((ai_values.count() - 1) * ai_values.std()**2 + 
+             (human_values.count() - 1) * human_values.std()**2) /
+            (ai_values.count() + human_values.count() - 2))
+        
+        feature_stats.append({
+            'feature': feature,
+            'ai_mean': ai_values.mean(),
+            'human_mean': human_values.mean(),
+            'difference': abs(ai_values.mean() - human_values.mean()),
+            'p_value': p_value,
+            'effect_size': abs(cohens_d)
+        })
+    
+    return pd.DataFrame(feature_stats).sort_values('effect_size', ascending=False)
+
+
+def plot_correlation_matrix(df: pd.DataFrame) -> None:
+    """Plot correlation matrix of features"""
+    numeric_features = df.select_dtypes(include=['float64', 'int64']).columns
+    features_to_analyze = [f for f in numeric_features if f not in ['path', 'label']]
+    
+    corr_matrix = df[features_to_analyze].corr()
+    
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, fmt='.2f')
+    plt.title('Feature Correlation Matrix')
+    plt.tight_layout()
+    plt.savefig('outputs/correlation_matrix.png')
+    plt.close()
+
+
+def perform_pca_analysis(df: pd.DataFrame) -> Tuple[PCA, np.ndarray]:
+    """Perform PCA analysis on the features"""
+    numeric_features = df.select_dtypes(include=['float64', 'int64']).columns
+    features_for_pca = [f for f in numeric_features if f not in ['path', 'label']]
+    
+    # Standardize the features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df[features_for_pca])
+    
+    # Perform PCA
+    pca = PCA()
+    X_pca = pca.fit_transform(X_scaled)
+    
+    # Plot explained variance ratio
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, len(pca.explained_variance_ratio_) + 1), 
+             np.cumsum(pca.explained_variance_ratio_), 'bo-')
+    plt.xlabel('Number of Components')
+    plt.ylabel('Cumulative Explained Variance Ratio')
+    plt.title('PCA Explained Variance Ratio')
+    plt.grid(True)
+    plt.savefig('outputs/pca_explained_variance.png')
+    plt.close()
+    
+    # Plot first two principal components
+    plt.figure(figsize=(10, 8))
+    scatter = plt.scatter(X_pca[:, 0], X_pca[:, 1], 
+                         c=pd.factorize(df['label'])[0], 
+                         cmap='viridis', alpha=0.6)
+    plt.xlabel('First Principal Component')
+    plt.ylabel('Second Principal Component')
+    plt.title('PCA: First Two Principal Components')
+    plt.colorbar(scatter, label='Class')
+    plt.savefig('outputs/pca_visualization.png')
+    plt.close()
+    
+    return pca, X_pca
+
+
+def plot_feature_distributions(df: pd.DataFrame, feature_analysis: pd.DataFrame) -> None:
+    """Plot distributions of top features"""
+    top_features = feature_analysis['feature'].head(6).tolist()
+    
+    plt.figure(figsize=(15, 10))
+    for i, feature in enumerate(top_features, 1):
+        plt.subplot(2, 3, i)
+        sns.kdeplot(data=df, x=feature, hue='label')
+        plt.title(f'{feature} Distribution')
+    
+    plt.tight_layout()
+    plt.savefig('outputs/feature_distributions.png')
+    plt.close()
+
+
+def get_top_correlations(df: pd.DataFrame, n: int = 5) -> List[Tuple[Tuple[str, str], float]]:
+    """Get top n correlated feature pairs"""
+    numeric_features = df.select_dtypes(include=['float64', 'int64']).columns
+    features_to_analyze = [f for f in numeric_features if f not in ['path', 'label']]
+    corr_matrix = df[features_to_analyze].corr()
+    
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    series = upper.unstack()
+    series = series.sort_values(ascending=False)
+    series = series.dropna()
+    
+    return list(zip(zip(*[series.index.get_level_values(i) for i in [0, 1]]), 
+                    series.values))[:n]
+
+
+def generate_analysis_report(df: pd.DataFrame, feature_analysis: pd.DataFrame, pca: PCA) -> str:
+    """Generate a comprehensive analysis report"""
+    report = """
+    Feature Analysis Report
+    ======================
+    
+    Dataset Overview:
+    ----------------
+    Total Images: {}
+    AI-generated: {}
+    Human-created: {}
+    Total Features: {}
+    
+    Top Distinguishing Features:
+    --------------------------
+    {}
+    
+    PCA Analysis:
+    ------------
+    Components needed for 90% variance: {}
+    First component explained variance: {:.2f}%
+    Second component explained variance: {:.2f}%
+    
+    Key Findings:
+    ------------
+    1. Most significant features (by effect size):
+       {}
+    
+    2. Highly correlated feature pairs:
+       {}
+    """.format(
+        len(df),
+        len(df[df['label'] == 'AI']),
+        len(df[df['label'] == 'Human']),
+        len(feature_analysis),
+        feature_analysis[['feature', 'effect_size', 'p_value']].head().to_string(),
+        np.argmax(np.cumsum(pca.explained_variance_ratio_) >= 0.9) + 1,
+        pca.explained_variance_ratio_[0] * 100,
+        pca.explained_variance_ratio_[1] * 100,
+        ", ".join(feature_analysis['feature'].head().tolist()),
+        "\n       ".join([f"{pair[0]} - {pair[1]}: {corr:.2f}" 
+                         for pair, corr in get_top_correlations(df, 5)])
+    )
+    
+    os.makedirs('outputs', exist_ok=True)
+    with open('outputs/analysis_report.txt', 'w') as f:
+        f.write(report)
+    
+    return report
+
+
+def analyze_features(df: pd.DataFrame) -> None:
+    """Run complete feature analysis pipeline"""
+    print("Analyzing feature differences...")
+    feature_analysis = analyze_feature_differences(df)
+    print("\nTop 10 most distinguishing features:")
+    print(feature_analysis.head(10))
+
+    print("\nGenerating correlation matrix...")
+    plot_correlation_matrix(df)
+
+    print("\nPerforming PCA analysis...")
+    pca, X_pca = perform_pca_analysis(df)
+
+    print("\nPlotting feature distributions...")
+    plot_feature_distributions(df, feature_analysis)
+
+    print("\nGenerating analysis report...")
+    report = generate_analysis_report(df, feature_analysis, pca)
+    print("\nAnalysis complete! Check the 'outputs' directory for detailed visualizations and reports.")
+    print("\nKey findings summary:")
+    print(report)
+
 # Add this at the bottom of the file
 __all__ = [
     'analyze_dataset',
     'plot_size_distribution',
     'plot_brightness_analysis',
     'plot_sample_color_distributions',
-    'generate_summary_report'
+    'generate_summary_report',
+    'load_or_process_dataset',
+    'analyze_feature_differences',
+    'plot_correlation_matrix',
+    'perform_pca_analysis',
+    'plot_feature_distributions',
+    'generate_analysis_report',
+    'analyze_features'
 ]
