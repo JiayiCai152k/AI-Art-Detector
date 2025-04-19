@@ -1,0 +1,35 @@
+
+    Ukiyo-e Dataset Analysis Summary
+    ==============================
+
+    Dataset Composition:
+    ------------------
+    Total Images: 2475
+    AI-generated: 1308
+    Human-created: 1167
+
+    Image Dimensions:
+    ---------------
+    Width (pixels):
+        AI     - Mean: 768.0, Std: 0.0
+        Human  - Mean: 1690.8, Std: 489.6
+    
+    Height (pixels):
+        AI     - Mean: 768.0, Std: 0.0
+        Human  - Mean: 1856.3, Std: 566.2
+    
+    Aspect Ratio:
+        AI     - Mean: 1.00, Std: 0.00
+        Human  - Mean: 1.02, Std: 0.50
+
+    File Sizes:
+    ----------
+    AI     - Mean: 119.5KB, Std: 12.0KB
+    Human  - Mean: 498.6KB, Std: 184.9KB
+
+    Brightness Characteristics:
+    ------------------------
+    Mean Brightness:
+        AI     - Mean: 122.6, Std: 8.5
+        Human  - Mean: 145.6, Std: 28.9
+    
