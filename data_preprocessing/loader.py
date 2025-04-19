@@ -57,9 +57,9 @@ def load_ukiyo_e_dataset(data_dir="data"):
         f"Height - Mean: {ai_df['height'].mean():.0f}, Min: {ai_df['height'].min()}, Max: {ai_df['height'].max()}"
     )
 
-    # Load and display one sample from each class with dimensions
-    sample_human_path = human_df.iloc[0]["path"]
-    sample_ai_path = ai_df.iloc[0]["path"]
+    # Load and display random samples from each class with dimensions
+    sample_human_path = human_df.sample(n=1).iloc[0]["path"]
+    sample_ai_path = ai_df.sample(n=1).iloc[0]["path"]
 
     sample_human = Image.open(sample_human_path)
     sample_ai = Image.open(sample_ai_path)
