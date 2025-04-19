@@ -9,48 +9,77 @@ import os
 from typing import Dict, Tuple, List
 
 
-def analyze_dataset(notebook_path="../ai-artwork-detection.ipynb") -> pd.DataFrame:
+def analyze_dataset(data_dir="../data") -> pd.DataFrame:
     """
-    Analyze the dataset from the Jupyter notebook
+    Analyze the ukiyo-e dataset and return basic statistics
     """
-    try:
-        # Read the notebook data
-        print(f"Reading data from notebook: {os.path.abspath(notebook_path)}")
-        
-        # Load the notebook using pandas
-        df = pd.read_json(notebook_path)
-        
-        # Extract the image data and labels
-        # Note: You'll need to adjust these column names based on your notebook's structure
-        data = []
-        
-        # Process each image in the dataset
-        for idx, row in df.iterrows():
-            try:
-                img = Image.open(row['image_path'])
+    ai_path = os.path.join(data_dir, "AI_SD_ukiyo-e")
+    human_path = os.path.join(data_dir, "Human_Ukiyo_e")
+    data = []
+    
+    # Print absolute paths for debugging
+    print(f"Looking for AI images in: {os.path.abspath(ai_path)}")
+    print(f"Looking for Human images in: {os.path.abspath(human_path)}")
+    
+    # Check if directories exist
+    if not os.path.exists(ai_path):
+        print(f"Error: AI images directory not found at {os.path.abspath(ai_path)}")
+        return pd.DataFrame()
+    
+    if not os.path.exists(human_path):
+        print(f"Error: Human images directory not found at {os.path.abspath(human_path)}")
+        return pd.DataFrame()
+    
+    # Count images found
+    ai_images = list(Path(ai_path).glob("*.[jp][pn][g]"))
+    human_images = list(Path(human_path).glob("*.[jp][pn][g]"))
+    
+    print(f"Found {len(ai_images)} AI-generated images")
+    print(f"Found {len(human_images)} human-created images")
+    
+    if len(ai_images) == 0 and len(human_images) == 0:
+        print("No images found in either directory!")
+        return pd.DataFrame()
+
+    # Process AI-generated images
+    for img_path in Path(ai_path).glob("*.[jp][pn][g]"):
+        try:
+            with Image.open(img_path) as img:
                 img_array = np.array(img)
-                
                 data.append({
-                    "path": row['image_path'],
-                    "label": "AI" if row['is_ai'] else "Human",  # Adjust based on your label column
+                    "path": str(img_path),
+                    "label": "AI",
                     "width": img.size[0],
                     "height": img.size[1],
                     "aspect_ratio": img.size[0] / img.size[1],
-                    "size_kb": os.path.getsize(row['image_path']) / 1024,
+                    "size_kb": os.path.getsize(img_path) / 1024,
                     "channels": img_array.shape[2] if len(img_array.shape) > 2 else 1,
                     "mean_brightness": np.mean(img_array),
                     "std_brightness": np.std(img_array)
                 })
-            except Exception as e:
-                print(f"Error processing image {row['image_path']}: {e}")
-                
-        result_df = pd.DataFrame(data)
-        print(f"Successfully processed {len(result_df)} images")
-        return result_df
-        
-    except Exception as e:
-        print(f"Error reading notebook: {e}")
-        return pd.DataFrame()
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+
+    # Process human-created images
+    for img_path in Path(human_path).glob("*.[jp][pn][g]"):
+        try:
+            with Image.open(img_path) as img:
+                img_array = np.array(img)
+                data.append({
+                    "path": str(img_path),
+                    "label": "Human",
+                    "width": img.size[0],
+                    "height": img.size[1],
+                    "aspect_ratio": img.size[0] / img.size[1],
+                    "size_kb": os.path.getsize(img_path) / 1024,
+                    "channels": img_array.shape[2] if len(img_array.shape) > 2 else 1,
+                    "mean_brightness": np.mean(img_array),
+                    "std_brightness": np.std(img_array)
+                })
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+    
+    return pd.DataFrame(data)
 
 
 def plot_size_distribution(df: pd.DataFrame) -> None:
@@ -179,42 +208,11 @@ def generate_summary_report(df: pd.DataFrame) -> str:
     """
     return summary
 
-
-def main():
-    """Main function to run the analysis"""
-    # Create output directory if it doesn't exist
-    os.makedirs('../outputs', exist_ok=True)
-    
-    # Load and analyze dataset
-    print("Loading and analyzing dataset...")
-    df = analyze_dataset()
-    
-    if len(df) == 0:
-        print("\nError: No data was loaded. Please check:")
-        print("1. Are you running the script from the correct directory?")
-        print("2. Is your data in the following structure?")
-        print("   data/")
-        print("   ├── AI_SD_ukiyo-e/")
-        print("   └── Human_Ukiyo-e/")
-        print(f"3. Current working directory: {os.getcwd()}")
-        return
-    
-    # Generate and save visualizations
-    print("\nGenerating visualizations...")
-    plot_size_distribution(df)
-    plot_brightness_analysis(df)
-    plot_sample_color_distributions(df)
-    
-    # Generate and save summary report
-    print("Generating summary report...")
-    summary = generate_summary_report(df)
-    with open('../outputs/dataset_analysis.txt', 'w') as f:
-        f.write(summary)
-    
-    # Save dataset metadata
-    df.to_csv('../outputs/dataset_metadata.csv', index=False)
-    print("Analysis complete! Check the outputs directory for results.")
-
-
-if __name__ == "__main__":
-    main()
+# Add this at the bottom of the file
+__all__ = [
+    'analyze_dataset',
+    'plot_size_distribution',
+    'plot_brightness_analysis',
+    'plot_sample_color_distributions',
+    'generate_summary_report'
+]
