@@ -12,6 +12,8 @@ from PIL import Image
 import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
+from torch.utils.data import Dataset
 
 
 @dataclass
@@ -56,18 +58,10 @@ def get_dataset_statistics(df: pd.DataFrame) -> DatasetStats:
     ai_generated = len(df[df["label"] == "ai"])
     human_created = len(df[df["label"] == "human"])
 
-    # Calculate suggested split sizes (70/15/15)
-    training_samples = int(total_images * 0.7)
-    validation_samples = int(total_images * 0.15)
-    test_samples = total_images - training_samples - validation_samples
-
     return {
         "total_images": total_images,
         "ai_generated": ai_generated,
         "human_created": human_created,
-        "training_samples": training_samples,
-        "validation_samples": validation_samples,
-        "test_samples": test_samples,
     }
 
 
@@ -128,25 +122,11 @@ def print_dataset_summary(df: pd.DataFrame) -> None:
         df: DataFrame containing image metadata
     """
     stats = get_dataset_statistics(df)
-    size_stats = analyze_image_sizes(df)
 
     print("=== Dataset Summary ===")
     print(f"\nTotal Images: {stats['total_images']}")
     print(f"AI Generated: {stats['ai_generated']}")
     print(f"Human Created: {stats['human_created']}")
-
-    print("\nSuggested Split:")
-    print(f"Training: {stats['training_samples']}")
-    print(f"Validation: {stats['validation_samples']}")
-    print(f"Test: {stats['test_samples']}")
-
-    print("\nUnique Image Dimensions:")
-    print("AI Generated Images:")
-    for dims in size_stats["AI"]:
-        print(f"  {dims[0]}x{dims[1]}")
-    print("Human Created Images:")
-    for dims in size_stats["Human"]:
-        print(f"  {dims[0]}x{dims[1]}")
 
     print("\nDataset Statistics:")
     print(df.describe())
@@ -302,6 +282,10 @@ def process_dataset(
     processed_df["original_path"] = processed_df["path"]
     processed_df["original_width"] = processed_df["width"]
     processed_df["original_height"] = processed_df["height"]
+    processed_df["target_label"] = processed_df["label"].apply(
+        lambda x: 1 if x == "ai" else 0
+    )
+
     processed_df["path"] = processed_df["path"].apply(
         lambda x: os.path.join(
             data_dir,
@@ -382,7 +366,8 @@ def split_dataset(
     random_state: int = 42,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Split dataset into training, validation and test sets while maintaining equal class distribution
+    Split dataset into training, validation and test sets while maintaining equal class distribution.
+    Returns DataFrames containing image paths and labels for each split.
 
     Args:
         df: DataFrame containing image metadata
@@ -392,7 +377,7 @@ def split_dataset(
         random_state: Random seed for reproducibility
 
     Returns:
-        Tuple of (train_df, val_df, test_df) with balanced classes
+        Tuple of (train_df, val_df, test_df) containing paths and labels for each split
     """
     # Verify ratios sum to 1
     if not abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-9:
@@ -421,52 +406,38 @@ def split_dataset(
         f"\nBalanced dataset size: {len(balanced_df)} images ({min_class_count} per class)"
     )
 
-    # Split each class separately to maintain distribution
-    train_dfs = []
-    val_dfs = []
-    test_dfs = []
+    # Calculate split sizes
+    total_samples = len(balanced_df)
+    train_size = int(total_samples * train_ratio)
+    val_size = int(total_samples * val_ratio)
 
-    for label in balanced_df["label"].unique():
-        class_df = balanced_df[balanced_df["label"] == label]
+    # Shuffle the DataFrame
+    shuffled_df = balanced_df.sample(frac=1, random_state=random_state).reset_index(
+        drop=True
+    )
 
-        # Calculate split indices
-        total_samples = len(class_df)
-        train_size = int(total_samples * train_ratio)
-        val_size = int(total_samples * val_ratio)
-
-        # Shuffle the data
-        shuffled_df = class_df.sample(frac=1, random_state=random_state)
-
-        # Split into sets
-        train_df = shuffled_df.iloc[:train_size]
-        val_df = shuffled_df.iloc[train_size : train_size + val_size]
-        test_df = shuffled_df.iloc[train_size + val_size :]
-
-        train_dfs.append(train_df)
-        val_dfs.append(val_df)
-        test_dfs.append(test_df)
-
-    # Combine splits from all classes
-    final_train_df = pd.concat(train_dfs, ignore_index=True)
-    final_val_df = pd.concat(val_dfs, ignore_index=True)
-    final_test_df = pd.concat(test_dfs, ignore_index=True)
-
-    # Shuffle the final datasets
-    final_train_df = final_train_df.sample(frac=1, random_state=random_state)
-    final_val_df = final_val_df.sample(frac=1, random_state=random_state)
-    final_test_df = final_test_df.sample(frac=1, random_state=random_state)
+    # Split into train, validation, and test sets
+    train_df = shuffled_df[:train_size]
+    val_df = shuffled_df[train_size : train_size + val_size]
+    test_df = shuffled_df[train_size + val_size :]
 
     print(f"\nDataset split summary:")
-    print(f"Training set: {len(final_train_df)} images")
-    print(f"Validation set: {len(final_val_df)} images")
-    print(f"Test set: {len(final_test_df)} images")
+    print(f"Training set: {len(train_df)} images")
+    print(f"Validation set: {len(val_df)} images")
+    print(f"Test set: {len(test_df)} images")
 
-    for label in balanced_df["label"].unique():
-        print(f"\nClass distribution for {label}:")
-        print(
-            f"Training: {len(final_train_df[final_train_df['label'] == label])} images"
-        )
-        print(f"Validation: {len(final_val_df[final_val_df['label'] == label])} images")
-        print(f"Test: {len(final_test_df[final_test_df['label'] == label])} images")
+    # Print class distribution for each split
+    for split_name, split_df in [
+        ("Training", train_df),
+        ("Validation", val_df),
+        ("Test", test_df),
+    ]:
+        print(f"\nClass distribution for {split_name}:")
+        class_dist = split_df["label"].value_counts()
+        for label, count in class_dist.items():
+            print(f"{label}: {count} images")
 
-    return final_train_df, final_val_df, final_test_df
+    return train_df, val_df, test_df
+
+
+#
