@@ -84,6 +84,9 @@ def analyze_dataset(data_dir="../data") -> pd.DataFrame:
 
 def plot_size_distribution(df: pd.DataFrame) -> None:
     """Plot image size distributions"""
+    # Create output directory if it doesn't exist
+    os.makedirs('outputs', exist_ok=True)
+    
     # Debug information
     print(f"DataFrame shape: {df.shape}")
     print("DataFrame columns:", df.columns.tolist())
@@ -113,12 +116,15 @@ def plot_size_distribution(df: pd.DataFrame) -> None:
     plt.title('Aspect Ratio Distribution')
     
     plt.tight_layout()
-    plt.savefig('../outputs/size_distribution.png')
+    plt.savefig('outputs/size_distribution.png')
     plt.close()
 
 
 def plot_brightness_analysis(df: pd.DataFrame) -> None:
     """Plot brightness characteristics"""
+    # Create output directory if it doesn't exist
+    os.makedirs('outputs', exist_ok=True)
+    
     plt.figure(figsize=(12, 5))
     
     plt.subplot(121)
@@ -130,7 +136,7 @@ def plot_brightness_analysis(df: pd.DataFrame) -> None:
     plt.title('Brightness Variation Distribution')
     
     plt.tight_layout()
-    plt.savefig('../outputs/brightness_analysis.png')
+    plt.savefig('outputs/brightness_analysis.png')
     plt.close()
 
 
@@ -149,6 +155,9 @@ def analyze_color_distribution(image_path: str) -> Dict[str, np.ndarray]:
 
 def plot_sample_color_distributions(df: pd.DataFrame, samples_per_class: int = 5) -> None:
     """Plot color distributions for sample images from each class"""
+    # Create output directory if it doesn't exist
+    os.makedirs('outputs', exist_ok=True)
+    
     plt.figure(figsize=(15, 10))
     
     for idx, label in enumerate(['AI', 'Human']):
@@ -165,7 +174,7 @@ def plot_sample_color_distributions(df: pd.DataFrame, samples_per_class: int = 5
             plt.xticks([])
     
     plt.tight_layout()
-    plt.savefig('../outputs/color_distributions.png')
+    plt.savefig('outputs/color_distributions.png')
     plt.close()
 
 
