@@ -3,6 +3,51 @@ import pandas as pd
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+
+
+class CustomImageDataset(Dataset):
+    """
+    Custom Dataset class for lazy loading of images.
+    Only loads images when they are accessed, making it memory efficient.
+    """
+
+    def __init__(self, df: pd.DataFrame, transform=None):
+        """
+        Args:
+            df: DataFrame containing image paths and labels
+            transform: Optional transform to be applied on a sample
+        """
+        self.df = df
+        self.transform = (
+            transform
+            if transform is not None
+            else transforms.Compose(
+                [
+                    transforms.ToTensor(),  # Converts to [0, 1] range and (C, H, W) format
+                ]
+            )
+        )
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        # Get image path and label
+        img_path = self.df.iloc[idx]["path"]
+        label = 1 if self.df.iloc[idx]["label"] == "ai" else 0
+
+        # Load and transform image only when accessed
+        image = Image.open(img_path).convert("RGB")
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
 
 
 def load_ukiyo_e_dataset(data_dir="data"):
@@ -57,9 +102,9 @@ def load_ukiyo_e_dataset(data_dir="data"):
         f"Height - Mean: {ai_df['height'].mean():.0f}, Min: {ai_df['height'].min()}, Max: {ai_df['height'].max()}"
     )
 
-    # Load and display one sample from each class with dimensions
-    sample_human_path = human_df.iloc[0]["path"]
-    sample_ai_path = ai_df.iloc[0]["path"]
+    # Load and display random samples from each class with dimensions
+    sample_human_path = human_df.sample(n=1).iloc[0]["path"]
+    sample_ai_path = ai_df.sample(n=1).iloc[0]["path"]
 
     sample_human = Image.open(sample_human_path)
     sample_ai = Image.open(sample_ai_path)

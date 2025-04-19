@@ -45,7 +45,6 @@ venv.bak/
 # Data and Models (customize based on your needs)
 *.h5
 *.pkl
-*.pth
 *.ckpt
 *.bin
 data/*.jpg

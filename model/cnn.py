@@ -1,289 +1,315 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import numpy as np
+from torch.utils.data import DataLoader, TensorDataset
+import platform
 
 
-class CNN:
-    def __init__(self):
-        # Hardcoded parameters
-        self.learning_rate = 0.001
-        self.num_epochs = 10
-        self.batch_size = 32
-        self.filter_sizes = [32, 64, 128]  # Number of filters in each conv layer
-        self.kernel_sizes = [3, 3, 3]  # Kernel sizes for each conv layer
-        self.pool_sizes = [2, 2, 2]  # Pooling sizes
-        self.fc_layer_sizes = [512, 128]  # Fully connected layer sizes
-        self.dropout_rate = 0.5
+class CNN(nn.Module):
+    def save_weights(self):
+        path = f"cnn_weights_epoch_{self.num_epochs}_lr_{self.learning_rate}_bs_{self.batch_size}.pth"
+        torch.save(self.state_dict(), path)
 
-        # Network parameters to be initialized
-        self.params = {}
+    def load_weights(self, path):
+        self.load_state_dict(torch.load(path))
 
-    def initialize_parameters(self):
-        # This would initialize all CNN parameters
-        # For a real implementation, you'd need to initialize:
-        # - Convolutional filters
-        # - Fully connected layer weights and biases
-        print("Initializing CNN parameters...")
+    def __init__(
+        self,
+        learning_rate=0.0001,
+        num_epochs=10,
+        batch_size=3,
+        load_weights_path=None,
+    ):
+        super(CNN, self).__init__()
+        if load_weights_path:
+            self.load_weights(load_weights_path)
 
-        # In a real implementation, you'd initialize the weights here
-        # For example:
-        # W1 shape: (filter_height, filter_width, input_channels, num_filters)
-        # b1 shape: (num_filters,)
+        # Architecture parameters
+        self.learning_rate = learning_rate
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size  # Smaller batch size due to large images
+        self.input_shape = (768, 768, 3)  # Original large input size: 768 x 768 x 3
 
-        # For now, just initialize dummy parameters
-        self.params = {
-            "W1": np.random.randn(
-                self.kernel_sizes[0], self.kernel_sizes[0], 3, self.filter_sizes[0]
+        # Determine device
+        self.device = self._get_device()
+
+        # Convolutional layers with more aggressive downsampling
+        self.conv_layers = nn.Sequential(
+            # Initial aggressive downsampling
+            nn.Conv2d(
+                3, 16, kernel_size=7, stride=2, padding=3
+            ),  # Output: 384 x 384 x 16
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=4, stride=4),  # Output: 96 x 96 x 16
+            # Further processing with smaller kernels
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),  # Output: 96 x 96 x 32
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=4, stride=4),  # Output: 24 x 24 x 32
+            nn.Conv2d(32, 48, kernel_size=3, padding=1),  # Output: 24 x 24 x 48
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: 12 x 12 x 48
+            nn.Conv2d(48, 64, kernel_size=3, padding=1),  # Output: 12 x 12 x 64
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Final output: 6 x 6 x 64
+        )
+
+        # Calculate the size of flattened features
+        h_out = 6  # Final height
+        w_out = 6  # Final width
+        flattened_size = 64 * h_out * w_out  # 6 * 6 * 64 = 2,304 features
+
+        # Memory-efficient fully connected layers
+        self.fc_layers = nn.Sequential(
+            nn.Linear(flattened_size, 256),  # From 2,304 -> 256
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 64),  # From 256 -> 64
+            nn.ReLU(),
+            nn.Linear(64, 1),  # Final classification
+            nn.Sigmoid(),
+        )
+
+        # Initialize weights
+        self._initialize_weights()
+
+        # Store activations for attention analysis
+        self.activations = {}
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def _get_device(self):
+        """
+        Determine the best available device (Metal, CPU)
+        """
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+
+    def forward(self, x):
+        # Ensure input is in the correct format (B, C, H, W)
+        if x.shape[1] != 3:  # If channels are not in the correct position
+            x = x.permute(0, 3, 1, 2)
+
+        # Store input activation
+
+        # Pass through convolutional layers
+        for i, layer in enumerate(self.conv_layers):
+            x = layer(x)
+
+        # Flatten
+        x = x.view(x.size(0), -1)
+
+        # Pass through fully connected layers
+        x = self.fc_layers(x)
+
+        return x
+
+    def fit(self, train_df, val_df=None):
+        """
+        Train the model using the provided DataFrames containing image paths and labels.
+        Compatible with Metal Performance Shaders (MPS) for Mac devices.
+        """
+        from data_preprocessing.loader import CustomImageDataset
+        import gc
+
+        # Create datasets
+        train_dataset = CustomImageDataset(train_df)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=2
+            if self.device.type == "cpu"
+            else 0,  # MPS works better with 0 workers
+        )
+
+        if val_df is not None:
+            val_dataset = CustomImageDataset(val_df)
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=2 if self.device.type == "cpu" else 0,
             )
-            * 0.01,
-            "b1": np.zeros((self.filter_sizes[0],)),
-            "W2": np.random.randn(
-                self.kernel_sizes[1],
-                self.kernel_sizes[1],
-                self.filter_sizes[0],
-                self.filter_sizes[1],
-            )
-            * 0.01,
-            "b2": np.zeros((self.filter_sizes[1],)),
-            "W3": np.random.randn(
-                self.kernel_sizes[2],
-                self.kernel_sizes[2],
-                self.filter_sizes[1],
-                self.filter_sizes[2],
-            )
-            * 0.01,
-            "b3": np.zeros((self.filter_sizes[2],)),
-            # Fully connected layers
-            "W4": np.random.randn(
-                self.filter_sizes[2] * 28 * 28, self.fc_layer_sizes[0]
-            )
-            * 0.01,  # Example size
-            "b4": np.zeros((self.fc_layer_sizes[0],)),
-            "W5": np.random.randn(self.fc_layer_sizes[0], self.fc_layer_sizes[1])
-            * 0.01,
-            "b5": np.zeros((self.fc_layer_sizes[1],)),
-            "W6": np.random.randn(self.fc_layer_sizes[1], 1)
-            * 0.01,  # Output layer (binary classification)
-            "b6": np.zeros((1,)),
-        }
 
-    def conv_forward(self, A_prev, W, b, stride=1, pad=1):
-        """
-        Implement the forward propagation for a convolution function
+        # Define loss function and optimizer
+        criterion = nn.BCELoss()
+        optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
 
-        Arguments:
-        A_prev -- output activations of the previous layer, numpy array of shape (m, n_H_prev, n_W_prev, n_C_prev)
-        W -- Weights, numpy array of shape (f, f, n_C_prev, n_C)
-        b -- Biases, numpy array of shape (1, 1, 1, n_C)
-        stride -- stride of the convolution
-        pad -- zero-padding size
-
-        Returns:
-        Z -- conv output, numpy array
-        """
-        # This would be a proper convolution implementation
-        # For the template, just return a dummy value
-        print("Performing convolution...")
-
-        # Dummy implementation - would be replaced with actual convolution
-        m, n_H_prev, n_W_prev, n_C_prev = A_prev.shape
-        f, f, n_C_prev, n_C = W.shape
-
-        # Calculate output dimensions
-        n_H = int((n_H_prev - f + 2 * pad) / stride) + 1
-        n_W = int((n_W_prev - f + 2 * pad) / stride) + 1
-
-        # Initialize output
-        Z = np.zeros((m, n_H, n_W, n_C))
-
-        # For a proper implementation, you'd implement convolution here
-        # Just return a dummy tensor of the right shape
-        return Z
-
-    def pooling_forward(self, A_prev, pool_size=2, stride=2, mode="max"):
-        """
-        Implements the forward pass of the pooling layer
-
-        Arguments:
-        A_prev -- Input data, numpy array of shape (m, n_H_prev, n_W_prev, n_C_prev)
-        pool_size -- size of the pooling window
-        stride -- stride of the pooling operation
-        mode -- mode of pooling ("max" or "average")
-
-        Returns:
-        A -- output of the pooling layer, numpy array
-        """
-        print("Performing pooling...")
-
-        # Dummy implementation - would be replaced with actual pooling
-        m, n_H_prev, n_W_prev, n_C_prev = A_prev.shape
-
-        # Calculate output dimensions
-        n_H = int(1 + (n_H_prev - pool_size) / stride)
-        n_W = int(1 + (n_W_prev - pool_size) / stride)
-
-        # Initialize output
-        A = np.zeros((m, n_H, n_W, n_C_prev))
-
-        # For a proper implementation, you'd implement pooling here
-        # Just return a dummy tensor of the right shape
-        return A
-
-    def relu(self, Z):
-        """
-        Implement the RELU function.
-
-        Arguments:
-        Z -- numpy array of any shape
-
-        Returns:
-        A -- output of relu(z), same shape as Z
-        """
-        return np.maximum(0, Z)
-
-    def sigmoid(self, Z):
-        """
-        Implements the sigmoid activation
-
-        Arguments:
-        Z -- numpy array of any shape
-
-        Returns:
-        A -- output of sigmoid(z), same shape as Z
-        """
-        return 1 / (1 + np.exp(-np.clip(Z, -500, 500)))
-
-    def forward_propagation(self, X):
-        """
-        Implement forward propagation for the CNN model
-
-        Arguments:
-        X -- input data, numpy array of shape (m, input_height, input_width, num_channels)
-
-        Returns:
-        A -- output of the model, probability of class 1
-        """
-        print("Forward propagation through CNN...")
-
-        # In a real implementation, you'd chain together convolutions, activations, and pooling
-        # For the template, just return a dummy prediction
-        m = X.shape[0]
-
-        # Dummy forward propagation
-        # This would be a full implementation connecting all layers
-
-        # For now, just return random predictions
-        Z = np.random.randn(m, 1)
-        A = self.sigmoid(Z)
-
-        return A
-
-    def compute_cost(self, A, Y):
-        """
-        Compute the binary cross-entropy cost
-
-        Arguments:
-        A -- output of forward propagation, numpy array of shape (m, 1)
-        Y -- true labels, numpy array of shape (m, 1)
-
-        Returns:
-        cost -- binary cross-entropy cost
-        """
-        m = Y.shape[0]
-
-        # Compute the loss
-        cost = -(1 / m) * np.sum(Y * np.log(A) + (1 - Y) * np.log(1 - A))
-
-        # To make sure cost is the dimension we expect (scalar)
-        cost = np.squeeze(cost)
-
-        return cost
-
-    def fit(self, X, Y):
-        """
-        Implement the training of the CNN
-
-        Arguments:
-        X -- training data, numpy array of shape (m, input_height, input_width, num_channels)
-        Y -- true labels, numpy array of shape (m, 1)
-
-        Returns:
-        parameters -- parameters learnt by the model
-        """
-        print("Training CNN...")
-
-        # Initialize parameters
-        self.initialize_parameters()
-
-        # Number of training examples
-        m = X.shape[0]
-
-        # Number of batches
-        num_batches = int(m / self.batch_size)
+        # Move model to device
+        self.to(self.device)
+        print(f"\nTraining on device: {self.device}")
+        print(f"Training parameters:")
+        print(f"- Learning rate: {self.learning_rate}")
+        print(f"- Batch size: {self.batch_size}")
+        print(f"- Number of epochs: {self.num_epochs}")
+        print(f"- Total training samples: {len(train_dataset)}")
+        print(f"- Steps per epoch: {len(train_loader)}\n")
 
         costs = []
-
-        # Training loop
         for epoch in range(self.num_epochs):
-            # Shuffle the data
-            permutation = np.random.permutation(m)
-            X_shuffled = X[permutation]
-            Y_shuffled = Y[permutation]
+            self.train()
+            train_loss = 0
+            train_correct = 0
+            train_total = 0
 
-            epoch_cost = 0
+            for batch_idx, (images, labels) in enumerate(train_loader):
+                # Move tensors to device
+                images = images.to(self.device)
+                labels = labels.to(self.device).float().view(-1, 1)
 
-            # Process in batches
-            for batch in range(num_batches):
-                # Get current batch
-                start = batch * self.batch_size
-                end = min((batch + 1) * self.batch_size, m)
-                X_batch = X_shuffled[start:end]
-                Y_batch = Y_shuffled[start:end]
+                # Forward pass
+                outputs = self(images)
+                loss = criterion(outputs, labels)
 
-                # Forward propagation
-                A = self.forward_propagation(X_batch)
+                # Backward pass and optimize
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-                # Compute cost
-                batch_cost = self.compute_cost(A, Y_batch)
-                epoch_cost += batch_cost / num_batches
+                # Calculate accuracy
+                with torch.no_grad():
+                    predictions = (outputs >= 0.5).float()
+                    train_correct += (predictions == labels).sum().item()
+                    train_total += labels.size(0)
+                    train_loss += loss.item()
 
-                # Backward propagation (would be implemented in a real version)
-                # Update parameters (would be implemented in a real version)
+                # Print progress
+                if (batch_idx + 1) % 5 == 0:
+                    print(
+                        f"Epoch [{epoch + 1}/{self.num_epochs}], "
+                        f"Batch [{batch_idx + 1}/{len(train_loader)}], "
+                        f"Loss: {loss.item():.4f}"
+                    )
 
-            # Print the cost every epoch
-            print(f"Cost after epoch {epoch}: {epoch_cost}")
-            costs.append(epoch_cost)
+                # Before processing each batch
+                if self.device.type == "mps":
+                    torch.mps.empty_cache()
+                gc.collect()
 
-        return self.params
+                # After processing each batch
+                del images, labels, outputs, loss, predictions
 
-    def predict_proba(self, X):
+            # Calculate epoch metrics
+            epoch_loss = train_loss / len(train_loader)
+            epoch_accuracy = train_correct / train_total * 100
+            costs.append(epoch_loss)
+
+            print(f"\nEpoch {epoch + 1}/{self.num_epochs} Summary:")
+            print(f"Training Loss: {epoch_loss:.4f}")
+            print(f"Training Accuracy: {epoch_accuracy:.2f}%")
+
+            # Validation phase
+            if val_df is not None:
+                self.eval()
+                val_loss = 0
+                val_correct = 0
+                val_total = 0
+
+                with torch.no_grad():
+                    for images, labels in val_loader:
+                        images = images.to(self.device)
+                        labels = labels.to(self.device).float().view(-1, 1)
+
+                        outputs = self(images)
+                        val_loss += criterion(outputs, labels).item()
+                        predictions = (outputs >= 0.5).float()
+                        val_correct += (predictions == labels).sum().item()
+                        val_total += labels.size(0)
+
+                        # Clear memory
+                        del outputs, predictions
+                        if self.device.type == "mps":
+                            torch.mps.empty_cache()
+
+                val_loss = val_loss / len(val_loader)
+                val_accuracy = val_correct / val_total * 100
+                print(f"Validation Loss: {val_loss:.4f}")
+                print(f"Validation Accuracy: {val_accuracy:.2f}%\n")
+
+            # Force garbage collection between epochs
+            gc.collect()
+            if self.device.type == "mps":
+                torch.mps.empty_cache()
+
+        return costs
+
+    def predict_proba(self, test_df):
         """
-        Implement prediction function
+        Predict probabilities for the test data.
+        """
+        from data_preprocessing.loader import CustomImageDataset
 
-        Arguments:
-        X -- input data, numpy array of shape (m, input_height, input_width, num_channels)
+        # Create test dataset and dataloader
+        test_dataset = CustomImageDataset(test_df)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=2 if self.device.type == "cpu" else 0,
+        )
+
+        # Set model to evaluation mode
+        self.eval()
+
+        all_probs = []
+        with torch.no_grad():
+            for images, _ in test_loader:
+                images = images.to(self.device)
+                outputs = self(images)
+                # Move predictions to CPU before converting to numpy
+                all_probs.append(outputs.cpu().numpy())
+
+                # Clear memory
+                del outputs, images
+                if self.device.type == "mps":
+                    torch.mps.empty_cache()
+
+        return np.concatenate(all_probs)
+
+    def predict(self, test_df, threshold=0.5):
+        """
+        Predict classes for the test data.
+
+        Args:
+            test_df: DataFrame containing test data paths and labels
+            threshold: Classification threshold (default: 0.5)
 
         Returns:
-        predictions -- numpy array of shape (m, 1) containing probabilities
+            Numpy array of predicted classes (0 for human, 1 for AI)
         """
-        # Forward propagation
-        A = self.forward_propagation(X)
+        probs = self.predict_proba(test_df)
+        return (probs >= threshold).astype(int)
 
-        return A
+    def analyze_attention(self, X, layer_indices=None):
+        if not isinstance(X, torch.Tensor):
+            X = torch.FloatTensor(X)
 
-    def predict(self, X, threshold=0.5):
-        """
-        Implement prediction function
+        X = X.to(self.device)
 
-        Arguments:
-        X -- input data, numpy array of shape (m, input_height, input_width, num_channels)
-        threshold -- threshold for binary classification
+        # Forward pass to get activations
+        with torch.no_grad():
+            _ = self(X)
 
-        Returns:
-        predictions -- numpy array of shape (m, 1) containing prediction (0/1)
-        """
-        # Get probabilities
-        probs = self.predict_proba(X)
+        if layer_indices is None:
+            layer_indices = range(1, len(self.activations))
 
-        # Convert to binary predictions
-        predictions = (probs >= threshold).astype(int)
+        attention_maps = {}
+        for layer in layer_indices:
+            if layer in self.activations:
+                attention_maps[layer] = self.activations[layer].cpu().numpy()
 
-        return predictions
+        # Clear memory
+        if self.device.type == "mps":
+            torch.mps.empty_cache()
+
+        return attention_maps
