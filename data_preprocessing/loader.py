@@ -80,11 +80,3 @@ def load_ukiyo_e_dataset(data_dir="data"):
     plt.show()
 
     return df
-
-
-# Usage
-df = load_ukiyo_e_dataset()
-
-# Display the first few rows of the DataFrame with all information
-print("\nDataFrame Preview:")
-print(df.head())
