@@ -1,7 +1,7 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-
+from model.eval import get_performance_metrics
 
 def apply_threshold(probabilities, threshold):
     # +1 if >= threshold and -1 otherwise.
@@ -51,24 +51,16 @@ with tab2:
         Here, we visualize the raw probability score directly.
         """)
 
-    # Sample confusion matrices (TN, FP, FN, TP)
-    sample_conf_matrices = {
-        "Logistic Regression": np.array([[33, 7], [5, 41]]),
-        "CNN": np.array([[28, 6], [4, 50]]),
-    }
+    # show the evaluation result for the model
+    metrics = get_performance_metrics()
+    if selected_model == "Logistic Regression":
+        model_metrics = metrics["logistic_regression"]
+    else:
+        model_metrics = metrics["cnn"]
 
-    conf_matrix = sample_conf_matrices[selected_model]
-    true_neg, false_pos, false_neg, true_pos = conf_matrix.ravel()
-
-    precision = true_pos / (true_pos + false_pos)
-    recall = true_pos / (true_pos + false_neg)
-
-    # Display metrics
-    st.write("### Model Metrics")
-    st.write("**Precision:** %.2f" % precision)
-    st.write("**Recall:** %.2f" % recall)
-
-    st.write('There are **{}** false positives'.format(false_pos))
-    st.write('There are **{}** false negatives'.format(false_neg))
-    st.write('There are **{}** true positives'.format(true_pos))
-    st.write('There are **{}** true negatives'.format(true_neg))
+    st.write("### Model Metrics from Evaluation Function")
+    st.write("Accuracy:", f"{model_metrics['accuracy']:.2f}")
+    st.write("Precision:", f"{model_metrics['precision']:.2f}")
+    st.write("Recall:", f"{model_metrics['recall']:.2f}")
+    st.write("F1 Score:", f"{model_metrics['f1_score']:.2f}")
+    st.write("Mean Squared Error (MSE):", f"{model_metrics['mse']:.2f}")

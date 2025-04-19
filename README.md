@@ -1,9 +1,14 @@
-# Final Project Templates
+# Classifying AI-Generated vs. Human-Created Ukiyo-e Art Using Machine Learning
 
-This repository contains three example Streamlit application templates intended to provide examples of front-end development.
+## Authors
 
-There are three templates provided including:
-* Machine Learning Pipeline Example
-* Cornell Tech Show Boutique Example
-* Cornell Tech Restaurant Finder Example
-* NYC Traffic Accidents
+- [Shiwen(Lareina) Yang](sy796@cornell.edu)
+- [Jiayi Cai](jc3669@cornell.edu)
+- [Zach Zhong](zz857@cornell.edu)
+
+## Instructions
+
+Run the application:
+```
+streamlit run AI_Art_Detector.py
+```
