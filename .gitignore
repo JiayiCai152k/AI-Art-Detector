@@ -1,2 +1,103 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
 .venv
-**/.DS_Store
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+*.ipynb
+
+# Data and Models (customize based on your needs)
+*.h5
+*.pkl
+*.pth
+*.ckpt
+*.bin
+data/*.jpg
+data/*.jpeg
+data/*.png
+data/Human_Ukiyo_e/*
+data/AI_SD_ukiyo-e/*
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Tensorboard
+runs/
+
+# MLflow
+mlruns/
+
+# Weights & Biases
+wandb/
+
+# Environment variables
+.env
+.env.*
