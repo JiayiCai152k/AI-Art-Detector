@@ -1,0 +1,38 @@
+
+    Feature Analysis Report
+    ======================
+    
+    Dataset Overview:
+    ----------------
+    Total Images: 2475
+    AI-generated: 1308
+    Human-created: 1167
+    Total Features: 48
+    
+    Top Distinguishing Features:
+    --------------------------
+                      feature  effect_size        p_value
+32                entropy     3.417369   0.000000e+00
+35             line_count     1.703048  1.335424e-294
+14        saturation_mean     1.503273  2.496442e-242
+21  saturation_quartile_3     1.432842  2.640820e-224
+4                red_mean     1.398362  1.398933e-215
+    
+    PCA Analysis:
+    ------------
+    Components needed for 90% variance: 13
+    First component explained variance: 26.16%
+    Second component explained variance: 13.99%
+    
+    Key Findings:
+    ------------
+    1. Most significant features (by effect size):
+       entropy, line_count, saturation_mean, saturation_quartile_3, red_mean
+    
+    2. Highly correlated feature pairs:
+       contrast - lab_contrast: 0.99
+       lab_brightness - green_mean: 0.99
+       lab_brightness - mean_brightness: 0.99
+       green_mean - mean_brightness: 0.98
+       contrast - green_std: 0.98
+    
