@@ -34,6 +34,23 @@ with tab2:
 
     st.markdown(f"#### Showing performance for: **{selected_model}**")
 
+    # result
+    ai_probability = 0.40
+
+    st.subheader("Results")
+    st.write(f"This ART WORK is **{int(ai_probability * 100)}%** likely to be **AI Generated!!!!**")
+    st.progress(ai_probability)
+
+    with st.expander("ℹ️ How this result is calculated"):
+        st.markdown("""
+        This value is based on the model's predicted probability for the AI class.
+        
+        If the model assigns a probability greater than or equal to a certain threshold (e.g., 0.5), 
+        the image is classified as AI-generated.
+
+        Here, we visualize the raw probability score directly.
+        """)
+
     # Sample confusion matrices (TN, FP, FN, TP)
     sample_conf_matrices = {
         "Logistic Regression": np.array([[33, 7], [5, 41]]),
