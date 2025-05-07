@@ -6,7 +6,7 @@ from pathlib import Path
 import cv2
 from PIL import Image
 import os
-from typing import Dict, Tuple, List, Any, Union
+from typing import Dict, Tuple, List, Any
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from scipy import stats
@@ -98,7 +98,7 @@ def extract_texture_features(img_array: np.ndarray) -> Dict[str, float]:
     return features
 
 
-def analyze_dataset(data_dir="../data") -> pd.DataFrame:
+def analyze_dataset(data_dir="./data") -> pd.DataFrame:
     """
     Analyze the ukiyo-e dataset and return basic statistics with engineered features
     """
@@ -365,7 +365,7 @@ def generate_summary_report(df: pd.DataFrame) -> str:
     return summary
 
 
-def load_or_process_dataset(force_reprocess=False, data_dir="../data") -> pd.DataFrame:
+def load_or_process_dataset(force_reprocess=False, data_dir="./data") -> pd.DataFrame:
     """Load dataset from cache or process it if needed"""
     cache_path = 'outputs/processed_features.csv'
     os.makedirs('outputs', exist_ok=True)
@@ -658,7 +658,7 @@ def extract_contrast_features(img_array: np.ndarray) -> Dict[str, float]:
     # Michelson contrast
     min_val = np.min(gray)
     max_val = np.max(gray)
-    michelson_contrast = (max_val - min_val) / (max_val + min_val + 1e-10)
+    michelson_contrast = (max_val - min_val) / (max_val + min_val + 1e-6)
     
     # RMS contrast
     rms_contrast = np.std(gray) / np.mean(gray)

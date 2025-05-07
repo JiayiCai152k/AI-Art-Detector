@@ -51,9 +51,12 @@ class CustomImageDataset(Dataset):
 
 
 def load_ukiyo_e_dataset(data_dir="data"):
+    print("loading ukiyo-e dataset")
     # Get paths for both human and AI images
     human_dir = os.path.join(data_dir, "Human_Ukiyo_e")
     ai_dir = os.path.join(data_dir, "AI_SD_ukiyo-e")
+    print(f"Looking for AI images in: {os.path.abspath(ai_dir)}")
+    print(f"Looking for Human images in: {os.path.abspath(human_dir)}")
 
     # Get all file paths and dimensions
     def get_files_with_dimensions(directory):
