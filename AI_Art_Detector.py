@@ -7,13 +7,12 @@ from model.cnn import CNN
 
 def process_image(img):
     img = img.convert('RGB')
-    img = img.resize((224, 224))
     # Create uint8 version for OpenCV operations (0-255)
     img_array_uint8 = np.array(img, dtype=np.uint8)
     # Create float32 version for neural network (0-1)
     img_array_float = (img_array_uint8 / 255.0).astype(np.float32)
     
-    st.write("Image resized to", img_array_float.shape)
+    st.write("Image dimensions:", img_array_uint8.shape)
     return {
         'uint8': img_array_uint8,
         'float32': img_array_float
