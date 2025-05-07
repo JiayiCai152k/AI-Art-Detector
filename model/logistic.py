@@ -3,7 +3,7 @@ from sklearn.preprocessing import StandardScaler
 from typing import Dict, List, Optional, Union
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, precision_score, recall_score, f1_score, mean_squared_error
 from data_preprocessing.analyze import load_or_process_dataset
 
 
@@ -142,13 +142,17 @@ class LogisticRegression:
         
         return self
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+    def predict_proba(self, X: Union[np.ndarray, pd.DataFrame]) -> np.ndarray:
         """Predict probability of being AI-generated"""
         if self.weights is None:
             raise ValueError("Model has not been fitted yet!")
         
-        # Scale features
-        X_scaled = self.scaler.transform(X)
+        # Ensure X has the correct feature names
+        if isinstance(X, np.ndarray):
+            X = pd.DataFrame(X, columns=self.feature_names)
+        
+        # Scale features and convert to numpy array
+        X_scaled = np.array(self.scaler.transform(X))
         
         # Compute probability
         z = np.dot(X_scaled, self.weights) + self.bias
@@ -175,15 +179,16 @@ class LogisticRegression:
 
     def save_weights(self, path: str) -> None:
         """Save model weights and parameters to file"""
-        if self.weights is None:
+        if self.weights is None or not hasattr(self.scaler, 'mean_'):
             raise ValueError("Model has not been fitted yet!")
         
         np.savez(
             path,
             weights=self.weights,
             bias=self.bias,
-            scaler_mean=self.scaler.mean_,
-            scaler_scale=self.scaler.scale_
+            scaler_mean=np.array(self.scaler.mean_),
+            scaler_scale=np.array(self.scaler.scale_),
+            feature_names=self.feature_names
         )
 
     def load_weights(self, path: str) -> None:
@@ -201,6 +206,8 @@ class LogisticRegression:
 
 def train_and_evaluate_model(df: pd.DataFrame):
     """Train and evaluate the logistic regression model"""
+    print("\nStarting model training and evaluation...")
+    
     # Select only the top features
     X = df[LogisticRegression.TOP_FEATURES]
     y = (df['label'] == 'AI').astype(int)
@@ -210,22 +217,61 @@ def train_and_evaluate_model(df: pd.DataFrame):
         X, y, test_size=0.3, random_state=42, stratify=y
     )
     
+    print(f"\nData split:")
+    print(f"Training samples: {len(X_train)}")
+    print(f"Test samples: {len(X_test)}")
+    print(f"AI samples in test: {sum(y_test == 1)}")
+    print(f"Human samples in test: {sum(y_test == 0)}")
+    
     # Initialize and train the model
     model = LogisticRegression()
+    print("\nTraining model...")
     model.fit(X_train, y_train)
     
     # Save the trained model weights
     model.save_weights('logistic_model_weights.npz')
     
-    # Evaluate the model
+    # Evaluate on both train and test sets
+    print("\nEvaluating model...")
+    
+    # Training set performance
+    y_train_pred = model.predict(X_train)
+    train_acc = accuracy_score(y_train, y_train_pred)
+    print(f"\nTraining Set Performance:")
+    print(f"Accuracy: {train_acc:.4f}")
+    print("\nTraining Confusion Matrix:")
+    print(confusion_matrix(y_train, y_train_pred))
+    
+    # Test set performance
     y_pred = model.predict(X_test)
     y_pred_proba = model.predict_proba(X_test)
     
-    # Print evaluation metrics
-    print("\nModel Performance:")
-    print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred, target_names=['Human', 'AI']))
+    # Calculate detailed metrics
+    metrics = {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred),
+        "recall": recall_score(y_test, y_pred),
+        "f1_score": f1_score(y_test, y_pred),
+        "mse": mean_squared_error(y_test, y_pred_proba)
+    }
+    
+    print(f"\nTest Set Performance:")
+    print(f"Accuracy: {metrics['accuracy']:.4f}")
+    print(f"Precision: {metrics['precision']:.4f}")
+    print(f"Recall: {metrics['recall']:.4f}")
+    print(f"F1 Score: {metrics['f1_score']:.4f}")
+    print(f"MSE: {metrics['mse']:.4f}")
+    
+    print("\nTest Confusion Matrix:")
+    print(confusion_matrix(y_test, y_pred))
+    
+    print("\nFeature Importance:")
+    importance = model.get_feature_importance()
+    for feature, score in importance.items():
+        print(f"{feature}: {score:.4f}")
+    
+    # Save metrics
+    np.savez('logistic_model_metrics.npz', **metrics)
     
     return model, (X_train, X_test, y_train, y_test)
 
@@ -270,11 +316,20 @@ if __name__ == "__main__":
     df = load_or_process_dataset()
     
     # Train and evaluate the model
+    print("\nTraining and evaluating model...")
     model, (X_train, X_test, y_train, y_test) = train_and_evaluate_model(df)
     
-    # Example of using the model for prediction
-    # Note: Replace with an actual image path
-    # result = predict_single_image(model, "path/to/your/image.jpg")
-    # print(f"\nPrediction for single image:")
-    # print(f"Class: {result['prediction']}")
-    # print(f"Probability: {result['probability']:.4f}")
+    # Print evaluation results
+    print("\nFinal Evaluation Results:")
+    metrics = np.load('logistic_model_metrics.npz')
+    print(f"Accuracy: {metrics['accuracy']:.4f}")
+    print(f"Precision: {metrics['precision']:.4f}")
+    print(f"Recall: {metrics['recall']:.4f}")
+    print(f"F1 Score: {metrics['f1_score']:.4f}")
+    print(f"MSE: {metrics['mse']:.4f}")
+    
+    # Print feature importance
+    print("\nFeature Importance:")
+    importance = model.get_feature_importance()
+    for feature, score in importance.items():
+        print(f"{feature}: {score:.4f}")
