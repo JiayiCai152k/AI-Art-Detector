@@ -22,7 +22,7 @@ class LogisticRegression:
         'hue_bin_3'
     ]
 
-    def __init__(self, learning_rate: float = 0.1, num_iterations: int = 1000, reg_lambda: float = 0.1):
+    def __init__(self, learning_rate: float = 0.01, num_iterations: int = 1000, reg_lambda: float = 0.1):
         self.learning_rate = learning_rate
         self.num_iterations = num_iterations
         self.reg_lambda = reg_lambda  # L2 regularization parameter
