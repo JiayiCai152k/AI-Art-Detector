@@ -88,9 +88,9 @@ with tab2:
                 model_metrics = metrics["logistic_regression"] if selected_model == "Logistic Regression" else metrics["cnn"]
 
                 st.write("### Model Metrics from Evaluation Function")
-                st.write("Accuracy:", f"{model_metrics['accuracy']:.2f}")
-                st.write("Precision:", f"{model_metrics['precision']:.2f}")
-                st.write("Recall:", f"{model_metrics['recall']:.2f}")
-                st.write("F1 Score:", f"{model_metrics['f1_score']:.2f}")
-                st.write("Mean Squared Error (MSE):", f"{model_metrics['mse']:.2f}")
+                st.write("Accuracy:", f"{model_metrics['accuracy']:.4f}")
+                st.write("Precision:", f"{model_metrics['precision']:.4f}")
+                st.write("Recall:", f"{model_metrics['recall']:.4f}")
+                st.write("F1 Score:", f"{model_metrics['f1_score']:.4f}")
+                st.write("Mean Squared Error (MSE):", f"{model_metrics['mse']:.4f}")
        
