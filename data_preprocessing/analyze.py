@@ -6,7 +6,7 @@ from pathlib import Path
 import cv2
 from PIL import Image
 import os
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List, Any, Union
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from scipy import stats
@@ -658,7 +658,7 @@ def extract_contrast_features(img_array: np.ndarray) -> Dict[str, float]:
     # Michelson contrast
     min_val = np.min(gray)
     max_val = np.max(gray)
-    michelson_contrast = (max_val - min_val) / (max_val + min_val + 1e-6)
+    michelson_contrast = (max_val - min_val) / (max_val + min_val + 1e-10)
     
     # RMS contrast
     rms_contrast = np.std(gray) / np.mean(gray)
