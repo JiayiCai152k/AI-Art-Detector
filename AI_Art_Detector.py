@@ -2,15 +2,22 @@ import streamlit as st
 import numpy as np
 from PIL import Image
 from model.eval import get_performance_metrics
-from model.logistic import LogisticRegression
+from model.logistic import LogisticRegression, predict_single_image
 from model.cnn import CNN
 
 def process_image(img):
     img = img.convert('RGB')
     img = img.resize((224, 224))
-    img_array = np.array(img) / 255.0  
-    st.write("Image resized to", img_array.shape)
-    return img_array
+    # Create uint8 version for OpenCV operations (0-255)
+    img_array_uint8 = np.array(img, dtype=np.uint8)
+    # Create float32 version for neural network (0-1)
+    img_array_float = (img_array_uint8 / 255.0).astype(np.float32)
+    
+    st.write("Image resized to", img_array_float.shape)
+    return {
+        'uint8': img_array_uint8,
+        'float32': img_array_float
+    }
     
 
 st.header("AI Art Detection Tool") 
@@ -26,10 +33,10 @@ with tab1:
     if uploaded_file is not None:
         # Display uploaded image
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_container_width=True)
+        st.image(image, caption="Uploaded Image", width=None)
 
-        preprocessed_image = process_image(image)
-        st.session_state["preprocessed_image"] = preprocessed_image
+        preprocessed_images = process_image(image)
+        st.session_state["preprocessed_images"] = preprocessed_images
         st.success("Image preprocessed and ready for prediction.")
 
     else:
@@ -40,30 +47,32 @@ with tab2:
 
     model_options = ["Logistic Regression", "CNN"]
 
-    if "preprocessed_image" not in st.session_state:
+    if "preprocessed_images" not in st.session_state:
          st.warning("⚠️ Please upload and preprocess an image in Tab1 first.")
     else:
         selected_model = st.selectbox("Select a model:", model_options)
-        preprocessed_image = st.session_state["preprocessed_image"]
+        preprocessed_images = st.session_state["preprocessed_images"]
 
         if st.button("🧠 Detect AI Art"):
             if selected_model == "CNN":
                 model = CNN()
-                prediction = model.predict_proba(preprocessed_image)
+                prediction = model.predict_proba(preprocessed_images['float32'])
                 ai_probability = float(prediction[0][0])
             else:
-                model = LogisticRegression()
-                flat_input = preprocessed_image.flatten().reshape(1, -1)
-                model.initialize_parameters(flat_input.shape[1])
-                ai_probability = model.predict_proba(flat_input)[0]
-
-            # Print result
-            if ai_probability is None:
-                st.warning("⚠️ Prediction not available. Please make sure an image is uploaded and processed.")
-            else:
-                st.subheader(f"🧾 Result for: **{selected_model}**")
-                st.write(f"🎯 This ART WORK is **{int(ai_probability * 100)}%** likely to be **AI-generated**.")
-                st.progress(min(max(ai_probability, 0.0), 1.0))  # Ensure between 0 and 1
+                try:
+                    # Pass the uint8 array directly
+                    result = predict_single_image(preprocessed_images['uint8'])
+                    ai_probability = result['probability']
+                    prediction_label = result['prediction']
+                    
+                    st.subheader(f"🧾 Result for: **{selected_model}**")
+                    st.write(f"🎯 This ART WORK is **{int(ai_probability * 100)}%** likely to be **AI-generated**.")
+                    st.write(f"Prediction: **{prediction_label}**")
+                    st.progress(min(max(ai_probability, 0.0), 1.0))
+                    
+                except ValueError as e:
+                    st.error(str(e))
+                    st.stop()
 
                 with st.expander("ℹ️ How this result is calculated"):
                     st.markdown("""
