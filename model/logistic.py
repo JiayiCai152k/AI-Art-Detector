@@ -2,6 +2,9 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from typing import Dict, List, Optional, Union
 import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from data_preprocessing.analyze import load_or_process_dataset
 
 
 class LogisticRegression:
@@ -98,7 +101,7 @@ class LogisticRegression:
             
             # Update parameters
             self.weights -= self.learning_rate * dw
-            self.bias -= self.learning_rate * db
+            self.bias = float(self.bias - self.learning_rate * db)  # Explicitly cast to float
             
             # Compute cost and check for improvement
             current_cost = self.compute_cost(X_scaled, y_array)
@@ -108,7 +111,7 @@ class LogisticRegression:
             
             if current_cost < best_cost - min_improvement:
                 best_cost = current_cost
-                best_weights = self.weights.copy()
+                best_weights = np.array(self.weights) if self.weights is not None else None
                 best_bias = self.bias
                 no_improvement = 0
             else:
@@ -133,8 +136,8 @@ class LogisticRegression:
         # Select and preprocess features
         X_features = X[self.feature_names]
         
-        # Scale features
-        X_scaled = self.scaler.transform(X_features)
+        # Scale features and ensure numpy array
+        X_scaled = np.array(self.scaler.transform(X_features))
         
         # Compute probability
         z = np.dot(X_scaled, self.weights) + self.bias
@@ -158,3 +161,118 @@ class LogisticRegression:
         
         # Sort by importance
         return dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
+
+def train_and_evaluate_model(df: pd.DataFrame):
+    """
+    Train and evaluate the logistic regression model using the provided dataset
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame containing the features and labels, already filtered to top 10 features
+        
+    Returns:
+    --------
+    tuple: (model, (X_train, X_test, y_train, y_test))
+    """
+    # Separate features and target
+    X = df.drop(['label', 'path'], axis=1)
+    y = (df['label'] == 'AI').astype(int)  # Convert to binary (0 for Human, 1 for AI)
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+    
+    print(f"Training set size: {len(X_train)}")
+    print(f"Test set size: {len(X_test)}")
+    
+    # Initialize and train the model
+    model = LogisticRegression(learning_rate=0.01, num_iterations=1000, reg_lambda=0.1)
+    print("\nTraining model...")
+    model.fit(X_train, y_train)
+    
+    # Make predictions
+    print("\nMaking predictions...")
+    y_pred = model.predict(X_test)
+    y_pred_proba = model.predict_proba(X_test)
+    
+    # Evaluate the model
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"\nAccuracy: {accuracy:.4f}")
+    
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred, target_names=['Human', 'AI']))
+    
+    print("\nConfusion Matrix:")
+    conf_matrix = confusion_matrix(y_test, y_pred)
+    print(conf_matrix)
+    
+    # Print feature importance
+    print("\nFeature Importance:")
+    importance = model.get_feature_importance()
+    for feature, score in importance.items():
+        print(f"{feature}: {score:.4f}")
+    
+    return model, (X_train, X_test, y_train, y_test)
+
+def predict_single_image(model, image_path):
+    """Predict whether a single image is AI-generated or human-created"""
+    # Load and process the single image
+    from data_preprocessing.analyze import analyze_dataset
+    import os
+    
+    # Create a temporary directory structure
+    temp_dir = "temp_prediction"
+    os.makedirs(temp_dir, exist_ok=True)
+    os.makedirs(os.path.join(temp_dir, "temp_img"), exist_ok=True)
+    
+    # Copy the image to the temporary directory
+    import shutil
+    temp_img_path = os.path.join(temp_dir, "temp_img", os.path.basename(image_path))
+    shutil.copy(image_path, temp_img_path)
+    
+    # Process the image
+    df = analyze_dataset(temp_dir)
+    
+    # Clean up
+    shutil.rmtree(temp_dir)
+    
+    # Keep only the relevant features
+    top_features = [
+        'entropy',
+        'line_count',
+        'saturation_mean',
+        'saturation_quartile_3',
+        'red_mean',
+        'hue_bin_0',
+        'saturation_median',
+        'local_contrast_3x3_std',
+        'saturation_quartile_1',
+        'hue_bin_3'
+    ]
+    df = df[top_features]
+    
+    # Make prediction
+    prob = model.predict_proba(df)
+    prediction = model.predict(df)
+    
+    return {
+        'prediction': 'AI' if prediction[0] == 1 else 'Human',
+        'probability': float(prob[0])
+    }
+
+if __name__ == "__main__":
+    # Load the dataset
+    print("Loading dataset...")
+    #df = load_or_process_dataset()
+    
+    # Train and evaluate the model
+    #model, (X_train, X_test, y_train, y_test) = train_and_evaluate_model(df)
+    
+    # Example of using the model for prediction
+    # Note: Replace with an actual image path
+    # result = predict_single_image(model, "path/to/your/image.jpg")
+    # print(f"\nPrediction for single image:")
+    # print(f"Class: {result['prediction']}")
+    # print(f"Probability: {result['probability']:.4f}")
