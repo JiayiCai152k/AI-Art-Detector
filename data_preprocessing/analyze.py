@@ -395,25 +395,38 @@ def analyze_feature_differences(df: pd.DataFrame) -> pd.DataFrame:
     features_to_analyze = [f for f in numeric_features if f not in ['path', 'label']]
     
     for feature in features_to_analyze:
-        ai_values = df[df['label'] == 'AI'][feature]
-        human_values = df[df['label'] == 'Human'][feature]
+        ai_values = np.array(df[df['label'] == 'AI'][feature].tolist(), dtype=np.float64)
+        human_values = np.array(df[df['label'] == 'Human'][feature].tolist(), dtype=np.float64)
         
-        # Perform t-test
-        t_stat, p_value = stats.ttest_ind(ai_values, human_values)
+        # Perform t-test with nan_policy='omit' to handle NaN values
+        t_stat, p_value = stats.ttest_ind(ai_values, human_values, nan_policy='omit')
+        p_val = float(np.asarray(p_value, dtype=np.float64).item())
         
-        # Calculate effect size (Cohen's d)
-        cohens_d = (ai_values.mean() - human_values.mean()) / np.sqrt(
-            ((ai_values.count() - 1) * ai_values.std()**2 + 
-             (human_values.count() - 1) * human_values.std()**2) /
-            (ai_values.count() + human_values.count() - 2))
+        # Calculate pooled standard deviation with safety checks
+        n1, n2 = ai_values.size, human_values.size
+        var1, var2 = np.nanvar(ai_values), np.nanvar(human_values)
         
+        # Handle potential division by zero in Cohen's d calculation
+        try:
+            pooled_std = np.sqrt(
+                ((n1 - 1) * var1 + (n2 - 1) * var2) / float(n1 + n2 - 2)
+            )
+            
+            # Only calculate Cohen's d if pooled_std is not too close to zero
+            if pooled_std > 1e-10:
+                cohens_d = float(np.nanmean(ai_values) - np.nanmean(human_values)) / pooled_std
+            else:
+                cohens_d = 0.0  # If standard deviation is too small, effect size is meaningless
+        except (ZeroDivisionError, RuntimeWarning):
+            cohens_d = 0.0
+            
         feature_stats.append({
             'feature': feature,
-            'ai_mean': ai_values.mean(),
-            'human_mean': human_values.mean(),
-            'difference': abs(ai_values.mean() - human_values.mean()),
-            'p_value': p_value,
-            'effect_size': abs(cohens_d)
+            'ai_mean': float(np.nanmean(ai_values)),
+            'human_mean': float(np.nanmean(human_values)),
+            'difference': float(abs(np.nanmean(ai_values) - np.nanmean(human_values))),
+            'p_value': float(p_val) if not np.isnan(p_val) else 1.0,
+            'effect_size': float(abs(cohens_d))
         })
     
     return pd.DataFrame(feature_stats).sort_values('effect_size', ascending=False)
