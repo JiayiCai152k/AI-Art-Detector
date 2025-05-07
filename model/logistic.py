@@ -361,6 +361,44 @@ def predict_single_image(image_array: np.ndarray) -> Dict[str, Union[float, str]
         }
     except FileNotFoundError:
         raise ValueError("No trained model weights found. Please train the model first.")
+    
+
+def output_model_results():
+    """
+    Output model evaluation results and feature importance.
+    Can be called from a Jupyter notebook to display results.
+    
+    Returns:
+        tuple: (metrics, feature_importance) containing evaluation metrics and feature importance dict
+    """
+    try:
+        # Load metrics from saved file
+        metrics = np.load('logistic_model_metrics.npz')
+        
+        # Print evaluation results
+        print("\nModel Evaluation Results:")
+        print(f"Accuracy: {metrics['accuracy']:.4f}")
+        print(f"Precision: {metrics['precision']:.4f}")
+        print(f"Recall: {metrics['recall']:.4f}")
+        print(f"F1 Score: {metrics['f1_score']:.4f}")
+        print(f"MSE: {metrics['mse']:.4f}")
+        
+        # Load model to get feature importance
+        model = LogisticRegression()
+        model.load_weights('logistic_model_weights.npz')
+        
+        # Get and print feature importance
+        importance = model.get_feature_importance()
+        print("\nFeature Importance:")
+        for feature, score in importance.items():
+            print(f"{feature}: {score:.4f}")
+        
+        # Return metrics and importance for further analysis
+        return dict(metrics), importance
+        
+    except FileNotFoundError:
+        print("No model metrics or weights found. Please train the model first.")
+        return None, None
 
 if __name__ == "__main__":
     # Load the dataset
