@@ -42,16 +42,23 @@ class LogisticRegression:
 
     def sigmoid(self, z: np.ndarray) -> np.ndarray:
         """Sigmoid activation function with numerical stability"""
+        # Use clipping for numerical stability
         return 1 / (1 + np.exp(-np.clip(z, -500, 500)))
 
-    def compute_cost(self, X: np.ndarray, y: np.ndarray) -> float:
+    def compute_cost(self, X: Union[np.ndarray, pd.DataFrame], y: np.ndarray) -> float:
         """Compute the cost function with L2 regularization"""
         if self.weights is None:
             raise ValueError("Weights not initialized")
             
-        m = X.shape[0]
-        z = np.dot(X, self.weights) + self.bias
-        predictions = self.sigmoid(z)
+        # Handle DataFrame input
+        if isinstance(X, pd.DataFrame):
+            X_features = X
+        else:
+            X_features = pd.DataFrame(X, columns=self.feature_names)
+        
+        m = X_features.shape[0]
+        # Get predicted probabilities
+        predictions = self.predict_proba(X_features)
         
         # Add epsilon to avoid log(0)
         epsilon = 1e-15
@@ -105,27 +112,26 @@ class LogisticRegression:
                 raise ValueError("Weights not initialized")
                 
             # Forward propagation
-            z = np.dot(X_scaled, self.weights) + self.bias
-            predictions = self.sigmoid(z)
+            predictions = self.predict_proba(X_features)
             
-            # Compute gradients
+            # Compute gradients (simplified calculation)
             dw = (1 / m) * np.dot(X_scaled.T, (predictions - y_array))
             dw += (self.reg_lambda / m) * self.weights
             db = (1 / m) * np.sum(predictions - y_array)
             
             # Update parameters
             self.weights -= self.learning_rate * dw
-            self.bias = float(self.bias - self.learning_rate * db)  # Explicitly cast to float
+            self.bias = float(self.bias - self.learning_rate * db)
             
             # Compute cost and check for improvement
-            current_cost = self.compute_cost(X_scaled, y_array)
+            current_cost = self.compute_cost(X_features, y_array)
             
             if i % 100 == 0:
                 print(f"Cost after iteration {i}: {current_cost:.6f}")
             
             if current_cost < best_cost - min_improvement:
                 best_cost = current_cost
-                best_weights = np.array(self.weights) if self.weights is not None else None
+                best_weights = np.array(self.weights)
                 best_bias = self.bias
                 no_improvement = 0
             else:
@@ -148,11 +154,13 @@ class LogisticRegression:
             raise ValueError("Model has not been fitted yet!")
         
         # Ensure X has the correct feature names
-        if isinstance(X, np.ndarray):
-            X = pd.DataFrame(X, columns=self.feature_names)
+        if isinstance(X, pd.DataFrame):
+            X_features = X[self.feature_names]
+        else:
+            X_features = pd.DataFrame(X, columns=self.feature_names)
         
-        # Scale features and convert to numpy array
-        X_scaled = np.array(self.scaler.transform(X))
+        # Scale features and explicitly convert to numpy array
+        X_scaled = np.array(self.scaler.transform(X_features))
         
         # Compute probability
         z = np.dot(X_scaled, self.weights) + self.bias
