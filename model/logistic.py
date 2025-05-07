@@ -22,7 +22,7 @@ class LogisticRegression:
         'hue_bin_3'
     ]
 
-    def __init__(self, learning_rate: float = 0.01, num_iterations: int = 1000, reg_lambda: float = 0.1):
+    def __init__(self, learning_rate: float = 0.01, num_iterations: int = 2000, reg_lambda: float = 0.01):
         self.learning_rate = learning_rate
         self.num_iterations = num_iterations
         self.reg_lambda = reg_lambda  # L2 regularization parameter
@@ -103,7 +103,7 @@ class LogisticRegression:
         best_bias = 0.0
         
         # Gradient descent with early stopping
-        patience = 5
+        patience = 20
         min_improvement = 1e-4
         no_improvement = 0
         
@@ -216,20 +216,41 @@ def train_and_evaluate_model(df: pd.DataFrame):
     """Train and evaluate the logistic regression model"""
     print("\nStarting model training and evaluation...")
     
+    # Keep track of the path column
+    path_column = df['path']
+    
     # Select only the top features
     X = df[LogisticRegression.TOP_FEATURES]
     y = (df['label'] == 'AI').astype(int)
     
-    # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
+    # Split data by class
+    X_with_path = pd.concat([X, path_column, pd.Series(y.values, index=X.index, name='label')], axis=1)
+    ai_samples = X_with_path[X_with_path['label'] == 1]
+    human_samples = X_with_path[X_with_path['label'] == 0]
+    
+    # Split each class with 80:20 ratio
+    ai_train, ai_test = train_test_split(ai_samples, test_size=0.2, random_state=42)
+    human_train, human_test = train_test_split(human_samples, test_size=0.2, random_state=42)
+    
+    # Combine the datasets
+    train_data = pd.concat([ai_train, human_train])
+    test_data = pd.concat([ai_test, human_test])
+    
+    # Shuffle the combined datasets
+    train_data = train_data.sample(frac=1, random_state=42).reset_index(drop=True)
+    test_data = test_data.sample(frac=1, random_state=42).reset_index(drop=True)
+    
+    # Separate features, labels, and paths
+    X_train = train_data[LogisticRegression.TOP_FEATURES]
+    y_train = train_data['label']
+    
+    X_test = test_data[LogisticRegression.TOP_FEATURES]
+    y_test = test_data['label']
+    test_paths = test_data['path']
     
     print(f"\nData split:")
-    print(f"Training samples: {len(X_train)}")
-    print(f"Test samples: {len(X_test)}")
-    print(f"AI samples in test: {sum(y_test == 1)}")
-    print(f"Human samples in test: {sum(y_test == 0)}")
+    print(f"Training samples: {len(X_train)} (AI: {sum(y_train == 1)}, Human: {sum(y_train == 0)})")
+    print(f"Test samples: {len(X_test)} (AI: {sum(y_test == 1)}, Human: {sum(y_test == 0)})")
     
     # Initialize and train the model
     model = LogisticRegression()
@@ -247,12 +268,28 @@ def train_and_evaluate_model(df: pd.DataFrame):
     train_acc = accuracy_score(y_train, y_train_pred)
     print(f"\nTraining Set Performance:")
     print(f"Accuracy: {train_acc:.4f}")
-    print("\nTraining Confusion Matrix:")
-    print(confusion_matrix(y_train, y_train_pred))
     
     # Test set performance
     y_pred = model.predict(X_test)
     y_pred_proba = model.predict_proba(X_test)
+    
+    # Print individual predictions with path and features
+    print("\nIndividual Test Predictions:")
+    for i in range(min(10, len(X_test))):  # Limit to 10 samples for readability
+        path = test_paths.iloc[i]
+        features = X_test.iloc[i].to_dict()
+        actual = "AI" if y_test.iloc[i] == 1 else "Human"
+        predicted = "AI" if y_pred[i] == 1 else "Human"
+        probability = y_pred_proba[i]
+        
+        print(f"\nSample {i+1}:")
+        print(f"Path: {path}")
+        print(f"Actual: {actual}, Predicted: {predicted}, Probability: {probability:.4f}")
+        print("Features:")
+        for feat, value in features.items():
+            print(f"  {feat}: {value:.4f}")
+    
+    print(f"\nShowing {min(10, len(X_test))} of {len(X_test)} predictions...")
     
     # Calculate detailed metrics
     metrics = {
@@ -280,6 +317,13 @@ def train_and_evaluate_model(df: pd.DataFrame):
     
     # Save metrics
     np.savez('logistic_model_metrics.npz', **metrics)
+    
+    # In train_and_evaluate_model, add feature normalization check
+    print("\nFeature distributions:")
+    for feature in LogisticRegression.TOP_FEATURES:
+        ai_mean = X_train[X_train.index.isin(ai_train.index)][feature].mean()
+        human_mean = X_train[X_train.index.isin(human_train.index)][feature].mean()
+        print(f"{feature}: AI={ai_mean:.4f}, Human={human_mean:.4f}, Diff={abs(ai_mean-human_mean):.4f}")
     
     return model, (X_train, X_test, y_train, y_test)
 
