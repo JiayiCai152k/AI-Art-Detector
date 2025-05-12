@@ -4,6 +4,8 @@ import torch.optim as optim
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 import platform
+from PIL import Image
+from torchvision import transforms
 
 
 class CNN(nn.Module):
@@ -433,3 +435,33 @@ class CNN(nn.Module):
             torch.mps.empty_cache()
 
         return attention_maps
+
+    def predict_single_image_proba(self, image):
+        """
+        Predict probability for a single PIL Image directly.
+
+        Args:
+            image: PIL Image object
+
+        Returns:
+            numpy array of shape (1, 1) containing the probability
+        """
+        self.eval()  # Set to evaluation mode
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+            ]
+        )
+
+        # Transform and add batch dimension
+        with torch.no_grad():
+            # Convert to tensor and move to device - exactly like in CustomImageDataset
+            image = image.convert("RGB")  # Ensure RGB format
+            image_tensor = transform(image).unsqueeze(0).float()
+            image_tensor = image_tensor.to(self.device)  # Use self.device directly
+
+            # Forward pass
+            outputs = self(image_tensor)
+
+            # Move to CPU and convert to numpy - shape will be (1, 1)
+            return outputs.cpu().numpy().reshape(-1, 1)

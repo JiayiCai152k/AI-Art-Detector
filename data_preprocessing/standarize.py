@@ -442,4 +442,42 @@ def split_dataset(
     return train_df, val_df, test_df
 
 
+def center_crop_image(
+    img: Image.Image, target_size: Tuple[int, int] = (768, 768)
+) -> Image.Image:
+    """
+    Center crop a single PIL Image to target size
+
+    Args:
+        img: PIL Image to crop
+        target_size: Desired output size (width, height)
+
+    Returns:
+        Center cropped PIL Image
+    """
+    # Calculate dimensions to resize to before cropping
+    width, height = img.size
+    aspect_ratio = width / height
+
+    # Resize so that smallest dimension is at least target size
+    if width < height:
+        new_width = target_size[0]
+        new_height = int(new_width / aspect_ratio)
+    else:
+        new_height = target_size[1]
+        new_width = int(new_height * aspect_ratio)
+
+    # Resize image
+    img = img.resize((new_width, new_height), Image.LANCZOS)
+
+    # Calculate crop box for center crop
+    left = (new_width - target_size[0]) // 2
+    top = (new_height - target_size[1]) // 2
+    right = left + target_size[0]
+    bottom = top + target_size[1]
+
+    # Perform center crop
+    return img.crop((left, top, right, bottom))
+
+
 #
