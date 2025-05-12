@@ -113,6 +113,25 @@ with tab2:
                     )
                     st.progress(min(max(ai_probability, 0.0), 1.0))
 
+                    with st.expander("ℹ️ How this result is calculated"):
+                        st.markdown("""
+                        This value is based on the model's predicted probability for the AI class.
+                        
+                        If the model assigns a probability greater than or equal to 0.5, 
+                        the image is classified as AI-generated.
+
+                        Here, we visualize the raw probability score directly.
+                        """)
+
+                    # Show the evaluation results for the CNN model
+                    metrics = model.output_model_results()
+                    st.write("### Model Metrics from Evaluation Function")
+                    st.write("Accuracy:", f"{metrics['accuracy']:.4f}")
+                    st.write("Precision:", f"{metrics['precision']:.4f}")
+                    st.write("Recall:", f"{metrics['recall']:.4f}")
+                    st.write("F1 Score:", f"{metrics['f1_score']:.4f}")
+                    st.write("Mean Squared Error (MSE):", f"{metrics['mse']:.4f}")
+
                 except Exception as e:
                     st.error(f"An error occurred during CNN prediction: {str(e)}")
                     import traceback
