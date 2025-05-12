@@ -7,63 +7,56 @@ import numpy as np
 
 def calculate_accuracy(y_pred, y_true):
     """Calculate accuracy for a given model and test data loader"""
-    return np.sum(y_pred.flatten() == y_true.flatten()) / len(y_true.flatten())
+    y_pred_binary = (y_pred >= 0.5).astype(int)
+    return np.mean(y_pred_binary == y_true)
 
 
 def calculate_precision(y_pred, y_true):
     """Calculate precision for a given model and test data loader"""
-    return np.sum(y_pred.flatten() == y_true.flatten()) / len(y_true.flatten())
+    y_pred_binary = (y_pred >= 0.5).astype(int)
+    true_positives = np.sum((y_pred_binary == 1) & (y_true == 1))
+    predicted_positives = np.sum(y_pred_binary == 1)
+    return true_positives / predicted_positives if predicted_positives > 0 else 0.0
 
 
 def calculate_recall(y_pred, y_true):
     """Calculate recall for a given model and test data loader"""
-    return np.sum(y_pred.flatten() == y_true.flatten()) / len(y_true.flatten())
+    y_pred_binary = (y_pred >= 0.5).astype(int)
+    true_positives = np.sum((y_pred_binary == 1) & (y_true == 1))
+    actual_positives = np.sum(y_true == 1)
+    return true_positives / actual_positives if actual_positives > 0 else 0.0
 
 
 def calculate_f1_score(y_pred, y_true):
     """Calculate F1 score for a given model and test data loader"""
+    precision = calculate_precision(y_pred, y_true)
+    recall = calculate_recall(y_pred, y_true)
     return (
-        2
-        * (calculate_precision(y_pred, y_true) * calculate_recall(y_pred, y_true))
-        / (calculate_precision(y_pred, y_true) + calculate_recall(y_pred, y_true))
+        2 * (precision * recall) / (precision + recall)
+        if (precision + recall) > 0
+        else 0.0
     )
 
 
-def get_performance_metrics() -> Dict[str, Dict[str, float]]:
-    """Return actual metrics for logistic regression, mock metrics for CNN"""
-    try:
-        logistic_metrics = np.load('logistic_model_metrics.npz')
-        return {
-            "logistic_regression": {
-                "accuracy": float(logistic_metrics['accuracy']),
-                "precision": float(logistic_metrics['precision']),
-                "recall": float(logistic_metrics['recall']),
-                "f1_score": float(logistic_metrics['f1_score']),
-                "mse": float(logistic_metrics['mse'])
-            },
-            "cnn": {
-                "accuracy": 0.85,
-                "precision": 0.87,
-                "recall": 0.83,
-                "f1_score": 0.85,
-                "mse": 0.15,
-            }
-        }
-    except FileNotFoundError:
-        print("No metrics file found. Using mock values.")
-        return {
-            "logistic_regression": {
-                "accuracy": 0.75,
-                "precision": 0.78,
-                "recall": 0.72,
-                "f1_score": 0.75,
-                "mse": 0.25,
-            },
-            "cnn": {
-                "accuracy": 0.85,
-                "precision": 0.87,
-                "recall": 0.83,
-                "f1_score": 0.85,
-                "mse": 0.15,
-            }
-        }
+def calculate_mse(y_pred, y_true):
+    """Calculate Mean Squared Error"""
+    return np.mean((y_pred - y_true) ** 2)
+
+
+def get_performance_metrics(y_pred, y_true) -> Dict[str, float]:
+    """Calculate and return performance metrics for predictions
+
+    Args:
+        y_pred: Model predictions (probabilities between 0-1)
+        y_true: True labels (0 or 1)
+
+    Returns:
+        Dictionary containing various performance metrics
+    """
+    return {
+        "accuracy": float(calculate_accuracy(y_pred > 0.5, y_true)),
+        "precision": float(calculate_precision(y_pred > 0.5, y_true)),
+        "recall": float(calculate_recall(y_pred > 0.5, y_true)),
+        "f1_score": float(calculate_f1_score(y_pred > 0.5, y_true)),
+        "mse": float(calculate_mse(y_pred, y_true)),
+    }

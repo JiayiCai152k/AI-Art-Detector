@@ -7,12 +7,91 @@ import platform
 
 
 class CNN(nn.Module):
-    def save_weights(self):
-        path = f"cnn_weights_epoch_{self.num_epochs}_lr_{self.learning_rate}_bs_{self.batch_size}.pth"
+    def save_weights(self, path=None):
+        if path is None:
+            path = f"cnn_weights_epoch_{self.num_epochs}_lr_{self.learning_rate}_bs_{self.batch_size}.pth"
+
+        # Debug information before saving
+        print("\nSaving model weights...")
+        print("Model's state_dict keys:")
+        for key in self.state_dict().keys():
+            print(f"- {key}")
+
+        torch.save(self.state_dict(), path)
+        print(f"Weights saved to: {path}")
+
+    def save_best_weights(self, path=None):
+        """Save the best weights during training"""
+        if path is None:
+            path = f"cnn_best_weights_epoch_{self.num_epochs}_lr_{self.learning_rate}_bs_{self.batch_size}.pth"
         torch.save(self.state_dict(), path)
 
     def load_weights(self, path):
-        self.load_state_dict(torch.load(path))
+        print(f"\nLoading weights from: {path}")
+
+        # Load the state dict
+        if self.device.type == "mps":
+            state_dict = torch.load(path, map_location="cpu")
+        else:
+            state_dict = torch.load(path, map_location=self.device)
+
+        # Check if we need to convert from old format
+        if any("conv_layers" in key for key in state_dict.keys()):
+            print("\nDetected old weight format, converting to new format...")
+            state_dict = self._convert_old_state_dict(state_dict)
+
+        # Debug information
+        print("\nKeys in loaded state_dict:")
+        for key in state_dict.keys():
+            print(f"- {key}")
+
+        print("\nKeys in current model:")
+        for key in self.state_dict().keys():
+            print(f"- {key}")
+
+        # Try to load weights
+        try:
+            self.load_state_dict(state_dict, strict=True)
+            print("\nWeights loaded successfully!")
+        except Exception as e:
+            print(f"\nError loading weights: {str(e)}")
+            raise
+
+        # Move model to device if needed
+        self.to(self.device)
+        print(f"Model moved to device: {self.device}")
+
+    def _convert_old_state_dict(self, old_state_dict):
+        """Convert weights from old Sequential format to new named format."""
+        new_state_dict = {}
+
+        # Mapping from old to new keys
+        conv_mapping = {
+            "conv_layers.0": "conv1",
+            "conv_layers.3": "conv2",
+            "conv_layers.6": "conv3",
+            "conv_layers.9": "conv4",
+        }
+
+        fc_mapping = {"fc_layers.0": "fc1", "fc_layers.3": "fc2", "fc_layers.5": "fc3"}
+
+        # Convert convolutional layers
+        for old_key, new_base in conv_mapping.items():
+            if f"{old_key}.weight" in old_state_dict:
+                new_state_dict[f"{new_base}.weight"] = old_state_dict[
+                    f"{old_key}.weight"
+                ]
+                new_state_dict[f"{new_base}.bias"] = old_state_dict[f"{old_key}.bias"]
+
+        # Convert fully connected layers
+        for old_key, new_base in fc_mapping.items():
+            if f"{old_key}.weight" in old_state_dict:
+                new_state_dict[f"{new_base}.weight"] = old_state_dict[
+                    f"{old_key}.weight"
+                ]
+                new_state_dict[f"{new_base}.bias"] = old_state_dict[f"{old_key}.bias"]
+
+        return new_state_dict
 
     def __init__(
         self,
@@ -22,59 +101,46 @@ class CNN(nn.Module):
         load_weights_path=None,
     ):
         super(CNN, self).__init__()
-        if load_weights_path:
-            self.load_weights(load_weights_path)
+
+        # Determine device first
+        self.device = self._get_device()
 
         # Architecture parameters
         self.learning_rate = learning_rate
         self.num_epochs = num_epochs
-        self.batch_size = batch_size  # Smaller batch size due to large images
-        self.input_shape = (768, 768, 3)  # Original large input size: 768 x 768 x 3
+        self.batch_size = batch_size
+        self.input_shape = (768, 768, 3)
 
-        # Determine device
-        self.device = self._get_device()
-
-        # Convolutional layers with more aggressive downsampling
-        self.conv_layers = nn.Sequential(
-            # Initial aggressive downsampling
-            nn.Conv2d(
-                3, 16, kernel_size=7, stride=2, padding=3
-            ),  # Output: 384 x 384 x 16
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=4, stride=4),  # Output: 96 x 96 x 16
-            # Further processing with smaller kernels
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),  # Output: 96 x 96 x 32
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=4, stride=4),  # Output: 24 x 24 x 32
-            nn.Conv2d(32, 48, kernel_size=3, padding=1),  # Output: 24 x 24 x 48
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: 12 x 12 x 48
-            nn.Conv2d(48, 64, kernel_size=3, padding=1),  # Output: 12 x 12 x 64
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # Final output: 6 x 6 x 64
-        )
+        # Define convolutional layers individually
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=7, stride=2, padding=3)
+        self.pool1 = nn.MaxPool2d(kernel_size=4, stride=4)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.pool2 = nn.MaxPool2d(kernel_size=4, stride=4)
+        self.conv3 = nn.Conv2d(32, 48, kernel_size=3, padding=1)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv4 = nn.Conv2d(48, 64, kernel_size=3, padding=1)
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Calculate the size of flattened features
         h_out = 6  # Final height
         w_out = 6  # Final width
         flattened_size = 64 * h_out * w_out  # 6 * 6 * 64 = 2,304 features
 
-        # Memory-efficient fully connected layers
-        self.fc_layers = nn.Sequential(
-            nn.Linear(flattened_size, 256),  # From 2,304 -> 256
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 64),  # From 256 -> 64
-            nn.ReLU(),
-            nn.Linear(64, 1),  # Final classification
-            nn.Sigmoid(),
-        )
+        # Define fully connected layers individually
+        self.fc1 = nn.Linear(flattened_size, 256)
+        self.dropout = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(256, 64)
+        self.fc3 = nn.Linear(64, 1)
+        self.sigmoid = nn.Sigmoid()
 
         # Initialize weights
         self._initialize_weights()
 
         # Store activations for attention analysis
         self.activations = {}
+
+        if load_weights_path:
+            self.load_weights(load_weights_path)
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -99,24 +165,49 @@ class CNN(nn.Module):
         if x.shape[1] != 3:  # If channels are not in the correct position
             x = x.permute(0, 3, 1, 2)
 
-        # Store input activation
+        # Convolutional layers
+        x = self.conv1(x)
+        x = torch.relu(x)
+        x = self.pool1(x)
 
-        # Pass through convolutional layers
-        for i, layer in enumerate(self.conv_layers):
-            x = layer(x)
+        x = self.conv2(x)
+        x = torch.relu(x)
+        x = self.pool2(x)
+
+        x = self.conv3(x)
+        x = torch.relu(x)
+        x = self.pool3(x)
+
+        x = self.conv4(x)
+        x = torch.relu(x)
+        x = self.pool4(x)
 
         # Flatten
         x = x.view(x.size(0), -1)
 
-        # Pass through fully connected layers
-        x = self.fc_layers(x)
+        # Fully connected layers
+        x = torch.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = torch.relu(self.fc2(x))
+        x = self.fc3(x)
+        x = self.sigmoid(x)
 
         return x
 
-    def fit(self, train_df, val_df=None):
+    def fit(self, train_df, val_df=None, patience=10, min_delta=1e-4):
         """
         Train the model using the provided DataFrames containing image paths and labels.
         Compatible with Metal Performance Shaders (MPS) for Mac devices.
+
+        Args:
+            train_df: Training data DataFrame
+            val_df: Validation data DataFrame
+            patience: Number of epochs to wait for improvement before early stopping
+            min_delta: Minimum change in validation loss to qualify as an improvement
+
+        Returns:
+            tuple: (training_costs, best_validation_loss) where training_costs is a list of losses per epoch
+                  and best_validation_loss is the lowest validation loss achieved
         """
         from data_preprocessing.loader import CustomImageDataset
         import gc
@@ -154,6 +245,11 @@ class CNN(nn.Module):
         print(f"- Number of epochs: {self.num_epochs}")
         print(f"- Total training samples: {len(train_dataset)}")
         print(f"- Steps per epoch: {len(train_loader)}\n")
+
+        # Early stopping variables
+        best_val_loss = float("inf")
+        best_epoch = 0
+        epochs_without_improvement = 0
 
         costs = []
         for epoch in range(self.num_epochs):
@@ -236,12 +332,34 @@ class CNN(nn.Module):
                 print(f"Validation Loss: {val_loss:.4f}")
                 print(f"Validation Accuracy: {val_accuracy:.2f}%\n")
 
+                # Early stopping check
+                if val_loss < best_val_loss - min_delta:
+                    best_val_loss = val_loss
+                    best_epoch = epoch
+                    epochs_without_improvement = 0
+                    # Save best weights
+                    self.save_best_weights()
+                    print(f"New best model saved! Validation Loss: {val_loss:.4f}")
+                else:
+                    epochs_without_improvement += 1
+                    if epochs_without_improvement >= patience:
+                        print(
+                            f"\nEarly stopping triggered! No improvement for {patience} epochs"
+                        )
+                        print(
+                            f"Best validation loss was {best_val_loss:.4f} at epoch {best_epoch + 1}"
+                        )
+                        break
+
             # Force garbage collection between epochs
             gc.collect()
             if self.device.type == "mps":
                 torch.mps.empty_cache()
 
-        return costs
+        # Save final weights
+        self.save_weights()
+
+        return costs, best_val_loss if val_df is not None else (costs, None)
 
     def predict_proba(self, test_df):
         """
@@ -260,11 +378,13 @@ class CNN(nn.Module):
 
         # Set model to evaluation mode
         self.eval()
+        self.to(self.device)  # Ensure model is on the correct device
 
         all_probs = []
         with torch.no_grad():
             for images, _ in test_loader:
-                images = images.to(self.device)
+                # Ensure images are in float32 format
+                images = images.float().to(self.device)
                 outputs = self(images)
                 # Move predictions to CPU before converting to numpy
                 all_probs.append(outputs.cpu().numpy())

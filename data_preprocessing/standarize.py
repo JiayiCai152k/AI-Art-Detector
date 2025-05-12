@@ -300,6 +300,8 @@ def process_dataset(
     )
     # IF the folder already exists, skip the processing
     if os.path.exists(os.path.join(data_dir, dir_name)):
+        processed_df.at[idx, "width"] = target_size[0]
+        processed_df.at[idx, "height"] = target_size[1]
         print(f"Folder {dir_name} already exists, skipping processing")
         return processed_df
     print(
