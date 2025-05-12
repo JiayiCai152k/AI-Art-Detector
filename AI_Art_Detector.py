@@ -1,19 +1,14 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
 from PIL import Image
 import torch
-from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
 from model.eval import get_performance_metrics
 from model.logistic import (
-    LogisticRegression,
     predict_single_image,
     output_model_results,
 )
 from model.cnn import CNN
 from data_preprocessing.standarize import center_crop_image
-from io import BytesIO
 
 
 def process_image(img, model_type="Logistic Regression", device=None):
