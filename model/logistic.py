@@ -353,7 +353,7 @@ def predict_single_image(image_array: np.ndarray) -> Dict[str, Union[float, str]
     try:
         model.load_weights('logistic_model_weights.npz')
         probability = model.predict_proba(X)[0]
-        prediction = 'AI' if probability >= 0.5 else 'Human'
+        prediction = 'AI-generated' if probability >= 0.5 else 'Human-created'
         
         return {
             'probability': float(probability),

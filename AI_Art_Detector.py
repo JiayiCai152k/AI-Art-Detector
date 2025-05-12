@@ -84,7 +84,7 @@ with tab2:
                     with col1:
                         st.write("Original Image:")
                         st.image(
-                            st.session_state["original_image"], use_column_width=True
+                            st.session_state["original_image"], use_container_width=True
                         )
                         original_size = st.session_state["original_image"].size
                         st.write(f"Size: {original_size[0]}x{original_size[1]}")
@@ -92,7 +92,7 @@ with tab2:
                         st.write("Processed Image (Center Cropped):")
                         st.image(
                             preprocessed_images["processed_image"],
-                            use_column_width=True,
+                            use_container_width=True,
                         )
                         cropped_size = preprocessed_images["processed_image"].size
                         st.write(f"Size: {cropped_size[0]}x{cropped_size[1]}")
@@ -109,7 +109,7 @@ with tab2:
                         f"🎯 This ART WORK is **{int(ai_probability * 100)}%** likely to be **AI-generated**."
                     )
                     st.write(
-                        f"Prediction: **{'AI-generated' if ai_probability > 0.5 else 'Human-created'}**"
+                        f"Prediction: **{'AI-generated' if ai_probability >= 0.5 else 'Human-created'}**"
                     )
                     st.progress(min(max(ai_probability, 0.0), 1.0))
 
