@@ -16,13 +16,13 @@ class CNN(nn.Module):
             path = f"cnn_weights_epoch_{self.num_epochs}_lr_{self.learning_rate}_bs_{self.batch_size}.pth"
 
         # Debug information before saving
-        print("\nSaving model weights...")
-        print("Model's state_dict keys:")
+        # print("\nSaving model weights...")
+        # print("Model's state_dict keys:")
         for key in self.state_dict().keys():
             print(f"- {key}")
 
         torch.save(self.state_dict(), path)
-        print(f"Weights saved to: {path}")
+        # print(f"Weights saved to: {path}")
 
     def save_best_weights(self, path=None):
         """Save the best weights during training"""
@@ -31,7 +31,7 @@ class CNN(nn.Module):
         torch.save(self.state_dict(), path)
 
     def load_weights(self, path):
-        print(f"\nLoading weights from: {path}")
+        # print(f"\nLoading weights from: {path}")
 
         # Load the state dict
         if self.device.type == "mps":
@@ -41,15 +41,15 @@ class CNN(nn.Module):
 
         # Check if we need to convert from old format
         if any("conv_layers" in key for key in state_dict.keys()):
-            print("\nDetected old weight format, converting to new format...")
+            # print("\nDetected old weight format, converting to new format...")
             state_dict = self._convert_old_state_dict(state_dict)
 
         # Debug information
-        print("\nKeys in loaded state_dict:")
+        # print("\nKeys in loaded state_dict:")
         for key in state_dict.keys():
             print(f"- {key}")
 
-        print("\nKeys in current model:")
+        # print("\nKeys in current model:")
         for key in self.state_dict().keys():
             print(f"- {key}")
 
