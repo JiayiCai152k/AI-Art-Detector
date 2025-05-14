@@ -98,6 +98,22 @@ Both models provide the following metrics:
 
 For the Logistic Regression model, feature importance is also displayed.
 
+## Jupyter Notebooks
+
+The repository includes several Jupyter notebooks for model development and analysis:
+
+- `ai-artwork-detection.ipynb`: Main notebook for AI artwork detection implementation and experimentation
+- `cnn_test.ipynb`: Development and testing of the CNN model architecture
+
+These notebooks contain:
+- Detailed model development process
+- Data preprocessing steps
+- Training and validation procedures
+- Performance analysis and visualizations
+- Experimental results and comparisons
+
+The notebooks serve as both documentation and development tools, showing the complete workflow from data preparation to model evaluation.
+
 ## Notes
 
 - The application uses MPS (Metal Performance Shaders) if available on macOS, otherwise falls back to CPU
